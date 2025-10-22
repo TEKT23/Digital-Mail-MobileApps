@@ -9,12 +9,9 @@ import (
 )
 
 func main() {
-	// koneksi DB
 	config.ConnectDB()
-
 	app := fiber.New()
 
-	// routes
 	routes.Register(app)
 
 	log.Println("🚀 API running on :8080")

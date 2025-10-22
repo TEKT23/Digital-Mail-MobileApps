@@ -58,5 +58,5 @@ type Letter struct {
 }
 
 func (Letter) TableName() string {
-	return "letters"
+	return "surat"
 }
