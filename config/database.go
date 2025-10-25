@@ -13,7 +13,7 @@ import (
 var DB *gorm.DB
 
 func LoadEnv() {
-	_ = godotenv.Load() // tidak error jika file tidak ada
+	_ = godotenv.Load()
 }
 
 func ConnectDB() *gorm.DB {
@@ -25,16 +25,18 @@ func ConnectDB() *gorm.DB {
 	pass := os.Getenv("DB_PASS")
 	name := os.Getenv("DB_NAME")
 	params := os.Getenv("DB_PARAMS")
+
 	if params == "" {
 		params = "charset=utf8mb4&parseTime=true&loc=Local"
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", user, pass, host, port, name, params)
-
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("failed connect config: %v", err)
+		log.Fatalf("failed to connect database: %v", err)
 	}
+
 	DB = db
+	log.Println("✅ Connected to database:", name)
 	return DB
 }
