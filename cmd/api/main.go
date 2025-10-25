@@ -11,7 +11,7 @@ import (
 func main() {
 	config.ConnectDB()
 	app := fiber.New()
-
+		
 	routes.Register(app)
 
 	log.Println("🚀 API running on :8080")

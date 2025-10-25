@@ -2,6 +2,7 @@ package main
 
 import (
 	"TugasAkhir/config"
+	"TugasAkhir/models"
 	"TugasAkhir/routes"
 	"log"
 
@@ -9,16 +10,13 @@ import (
 )
 
 func main() {
-	// koneksi DB
-	config.ConnectDB()
-
-	app := fiber.New()
-
-	// routes
-	routes.Register(app)
-
-	log.Println("🚀 API running on :8080")
-	if err := app.Listen(":8080"); err != nil {
-		log.Fatal(err)
+	db := config.ConnectDB()
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Letter{},
+		&models.PasswordResetToken{},
+	); err != nil {
+		log.Fatalf("AutoMigrate failed: %v", err)
 	}
+	log.Println("✅ Migration completed")
 }
