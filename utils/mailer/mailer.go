@@ -21,23 +21,31 @@ func (c *Client) SendPasswordResetEmail(toEmail, resetLink string) error {
 		return fmt.Errorf("smtp host is not configured")
 	}
 
+	from := c.cfg.FromAddress
+	if from == "" {
+		from = c.cfg.Username
+	}
+	if from == "" {
+		return fmt.Errorf("smtp from address is not configured")
+	}
+
 	addr := fmt.Sprintf("%s:%d", c.cfg.Host, c.cfg.Port)
 	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Host)
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Reset Password\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\nHalo,\r\n\r\nKami menerima permintaan untuk mengatur ulang kata sandi Anda. Silakan buka tautan berikut untuk melanjutkan proses reset kata sandi:\r\n%s\r\n\r\nJika Anda tidak meminta reset kata sandi, abaikan email ini.\r\n", c.cfg.FromAddress, toEmail, resetLink)
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Reset Password\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\nHalo,\r\n\r\nKami menerima permintaan untuk mengatur ulang kata sandi Anda. Silakan buka tautan berikut untuk melanjutkan proses reset kata sandi:\r\n%s\r\n\r\nJika Anda tidak meminta reset kata sandi, abaikan email ini.\r\n", from, toEmail, resetLink)
 
 	if c.cfg.Username == "" && c.cfg.Password == "" {
-		return smtp.SendMail(addr, nil, c.cfg.FromAddress, []string{toEmail}, []byte(msg))
+		return smtp.SendMail(addr, nil, from, []string{toEmail}, []byte(msg))
 	}
 
 	if c.cfg.Port == 465 {
-		return c.sendSMTPTLS(addr, auth, toEmail, msg)
+		return c.sendSMTPTLS(addr, auth, from, toEmail, msg)
 	}
 
-	return smtp.SendMail(addr, auth, c.cfg.FromAddress, []string{toEmail}, []byte(msg))
+	return smtp.SendMail(addr, auth, from, []string{toEmail}, []byte(msg))
 }
 
-func (c *Client) sendSMTPTLS(addr string, auth smtp.Auth, toEmail, msg string) error {
+func (c *Client) sendSMTPTLS(addr string, auth smtp.Auth, from, toEmail, msg string) error {
 	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: c.cfg.Host})
 	if err != nil {
 		return err
@@ -56,7 +64,7 @@ func (c *Client) sendSMTPTLS(addr string, auth smtp.Auth, toEmail, msg string) e
 		}
 	}
 
-	if err := client.Mail(c.cfg.FromAddress); err != nil {
+	if err := client.Mail(from); err != nil {
 		return err
 	}
 	if err := client.Rcpt(toEmail); err != nil {

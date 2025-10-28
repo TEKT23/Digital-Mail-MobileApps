@@ -12,6 +12,7 @@ type PasswordResetToken struct {
 	TokenHash string    `gorm:"type:varchar(255);not null;uniqueIndex"`
 	ExpiresAt time.Time `gorm:"not null"`
 	Used      bool      `gorm:"not null;default:false"`
+	UsedAt    *time.Time
 
 	User User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }

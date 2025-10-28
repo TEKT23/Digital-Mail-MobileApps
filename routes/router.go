@@ -25,4 +25,5 @@ func Register(app *fiber.App) {
 
 	// Auth
 	api.Post("/auth/forgot-password", handlers.RequestPasswordReset)
+	api.Post("/auth/reset-password", handlers.ResetPassword)
 }
