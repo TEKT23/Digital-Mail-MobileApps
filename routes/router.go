@@ -22,4 +22,7 @@ func Register(app *fiber.App) {
 	api.Get("/users/:id", handlers.GetUserByID)
 	api.Put("/users/:id", handlers.UpdateUser)
 	api.Delete("/users/:id", handlers.DeleteUser)
+
+	// Auth
+	api.Post("/auth/forgot-password", handlers.RequestPasswordReset)
 }
