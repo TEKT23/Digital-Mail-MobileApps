@@ -16,12 +16,14 @@ func Register(app *fiber.App) {
 	api.Put("/letters/:id", handlers.UpdateLetter)
 	api.Delete("/letters/:id", handlers.DeleteLetter)
 
-	// Users CRUD
-	api.Post("/users", handlers.CreateUser)
-	api.Get("/users", handlers.ListUsers)
-	api.Get("/users/:id", handlers.GetUserByID)
-	api.Put("/users/:id", handlers.UpdateUser)
-	api.Delete("/users/:id", handlers.DeleteUser)
+	// ----- ADMIN USERS CRUD -----
+	admin := api.Group("/admin")
+	// TODO: pasang middleware admin-only di sini (JWT + role check)
+	admin.Post("/users", handlers.AdminCreateUser)
+	admin.Get("/users", handlers.AdminListUsers) // ?page=&limit=&role=&q=
+	admin.Get("/users/:id", handlers.AdminGetUserByID)
+	admin.Put("/users/:id", handlers.AdminUpdateUser)
+	admin.Delete("/users/:id", handlers.AdminDeleteUser)
 
 	// Auth
 	api.Post("/auth/forgot-password", handlers.RequestPasswordReset)
