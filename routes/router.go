@@ -2,6 +2,8 @@ package routes
 
 import (
 	"TugasAkhir/handlers"
+	"TugasAkhir/middleware"
+	"TugasAkhir/models"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -9,23 +11,35 @@ import (
 func Register(app *fiber.App) {
 	api := app.Group("/api")
 
-	// Letters CRUD
-	api.Post("/letters", handlers.CreateLetter)
-	api.Get("/letters", handlers.ListLetters)
-	api.Get("/letters/:id", handlers.GetLetterByID)
-	api.Put("/letters/:id", handlers.UpdateLetter)
-	api.Delete("/letters/:id", handlers.DeleteLetter)
+	auth := api.Group("/auth")
+	auth.Post("/login", handlers.Login)
+	auth.Post("/register", handlers.Register)
+	auth.Post("/refresh", handlers.RefreshToken)
+	auth.Post("/forgot-password", handlers.RequestPasswordReset)
+	auth.Post("/reset-password", handlers.ResetPassword)
 
-	// ----- ADMIN USERS CRUD -----
-	admin := api.Group("/admin")
-	// TODO: pasang middleware admin-only di sini (JWT + role check)
+	letters := api.Group("/letters",
+		middleware.RequireAuth(),
+		middleware.AuthorizeRoles(
+			models.RoleBagianUmum,
+			models.RoleADC,
+			models.RoleDirektur,
+			models.RoleAdmin,
+		),
+	)
+	letters.Post("", handlers.CreateLetter)
+	letters.Get("", handlers.ListLetters)
+	letters.Get("/:id", handlers.GetLetterByID)
+	letters.Put("/:id", handlers.UpdateLetter)
+	letters.Delete("/:id", handlers.DeleteLetter)
+
+	admin := api.Group("/admin",
+		middleware.RequireAuth(),
+		middleware.AuthorizeRoles(models.RoleAdmin),
+	)
 	admin.Post("/users", handlers.AdminCreateUser)
 	admin.Get("/users", handlers.AdminListUsers) // ?page=&limit=&role=&q=
 	admin.Get("/users/:id", handlers.AdminGetUserByID)
 	admin.Put("/users/:id", handlers.AdminUpdateUser)
 	admin.Delete("/users/:id", handlers.AdminDeleteUser)
-
-	// Auth
-	api.Post("/auth/forgot-password", handlers.RequestPasswordReset)
-	api.Post("/auth/reset-password", handlers.ResetPassword)
 }

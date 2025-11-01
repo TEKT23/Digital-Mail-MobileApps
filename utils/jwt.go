@@ -27,10 +27,11 @@ type RegisteredClaims struct {
 }
 
 type JWTClaims struct {
-	UserID   uint        `json:"user_id"`
-	Role     models.Role `json:"role"`
-	Email    string      `json:"email"`
-	Username string      `json:"username"`
+	UserID    uint        `json:"user_id"`
+	Role      models.Role `json:"role"`
+	Email     string      `json:"email"`
+	Username  string      `json:"username"`
+	TokenType string      `json:"token_type,omitempty"`
 	RegisteredClaims
 }
 
@@ -44,6 +45,34 @@ func NewJWTClaimsFromUser(user models.User) JWTClaims {
 }
 
 func GenerateAccessToken(user models.User) (string, *JWTClaims, error) {
+	cfg := config.LoadJWTConfig()
+	return generateToken(user, "access", cfg.AccessTokenTTL)
+}
+
+func VerifyAccessToken(tokenString string) (*JWTClaims, error) {
+	return verifyToken(tokenString, "access")
+}
+
+func GenerateRefreshToken(user models.User) (string, *JWTClaims, error) {
+	cfg := config.LoadJWTConfig()
+	return generateToken(user, "refresh", cfg.RefreshTokenTTL)
+}
+
+func VerifyRefreshToken(tokenString string) (*JWTClaims, error) {
+	return verifyToken(tokenString, "refresh")
+}
+
+func signHS256(message string, secret []byte) string {
+	return base64.RawURLEncoding.EncodeToString(signHS256Raw(message, secret))
+}
+
+func signHS256Raw(message string, secret []byte) []byte {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(message))
+	return mac.Sum(nil)
+}
+
+func generateToken(user models.User, tokenType string, ttl time.Duration) (string, *JWTClaims, error) {
 	cfg := config.LoadJWTConfig()
 	now := time.Now()
 
@@ -75,7 +104,7 @@ func GenerateAccessToken(user models.User) (string, *JWTClaims, error) {
 	return token, &claims, nil
 }
 
-func VerifyAccessToken(tokenString string) (*JWTClaims, error) {
+func verifyToken(tokenString, expectedType string) (*JWTClaims, error) {
 	tokenString = strings.TrimSpace(tokenString)
 	if tokenString == "" {
 		return nil, errors.New("token is empty")
@@ -132,15 +161,9 @@ func VerifyAccessToken(tokenString string) (*JWTClaims, error) {
 		return nil, errors.New("token has expired")
 	}
 
+	if expectedType != "" && !strings.EqualFold(claims.TokenType, expectedType) {
+		return nil, errors.New("invalid token type")
+	}
+	
 	return &claims, nil
-}
-
-func signHS256(message string, secret []byte) string {
-	return base64.RawURLEncoding.EncodeToString(signHS256Raw(message, secret))
-}
-
-func signHS256Raw(message string, secret []byte) []byte {
-	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte(message))
-	return mac.Sum(nil)
 }

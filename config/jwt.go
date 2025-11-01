@@ -8,9 +8,10 @@ import (
 )
 
 type JWTConfig struct {
-	SecretKey      []byte
-	Issuer         string
-	AccessTokenTTL time.Duration
+	SecretKey       []byte
+	Issuer          string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 var (
@@ -41,10 +42,20 @@ func LoadJWTConfig() JWTConfig {
 			}
 		}
 
+		refreshTTL := 7 * 24 * time.Hour
+		if ttlStr := os.Getenv("JWT_REFRESH_TTL"); ttlStr != "" {
+			if parsed, err := time.ParseDuration(ttlStr); err == nil {
+				refreshTTL = parsed
+			} else {
+				log.Printf("invalid JWT_REFRESH_TTL value %q, using default %s", ttlStr, refreshTTL)
+			}
+		}
+
 		jwtConfig = JWTConfig{
-			SecretKey:      []byte(secret),
-			Issuer:         issuer,
-			AccessTokenTTL: ttl,
+			SecretKey:       []byte(secret),
+			Issuer:          issuer,
+			AccessTokenTTL:  ttl,
+			RefreshTokenTTL: ttl,
 		}
 	})
 
