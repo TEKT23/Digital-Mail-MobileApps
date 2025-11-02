@@ -164,6 +164,6 @@ func verifyToken(tokenString, expectedType string) (*JWTClaims, error) {
 	if expectedType != "" && !strings.EqualFold(claims.TokenType, expectedType) {
 		return nil, errors.New("invalid token type")
 	}
-	
+
 	return &claims, nil
 }

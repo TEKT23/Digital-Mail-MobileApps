@@ -1,138 +1,47 @@
 package handlers
 
 import (
+	"TugasAkhir/utils"
 	"strconv"
-	"time"
 
 	"TugasAkhir/config"
+	letterdto "TugasAkhir/dto/letters"
 	"TugasAkhir/models"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-type LetterReq struct {
-	Pengirim         *string              `json:"pengirim"`
-	NomorSurat       *string              `json:"nomor_surat"`
-	NomorAgenda      *string              `json:"nomor_agenda"`
-	Disposisi        *string              `json:"disposisi"`
-	TanggalDisposisi *time.Time           `json:"tanggal_disposisi"`
-	BidangTujuan     *string              `json:"bidang_tujuan"`
-	JenisSurat       *models.LetterType   `json:"jenis_surat"`
-	Prioritas        *models.Priority     `json:"prioritas"`
-	IsiSurat         *string              `json:"isi_surat"`
-	TanggalSurat     *time.Time           `json:"tanggal_surat"`
-	TanggalMasuk     *time.Time           `json:"tanggal_masuk"`
-	JudulSurat       *string              `json:"judul_surat"`
-	Kesimpulan       *string              `json:"kesimpulan"`
-	FilePath         *string              `json:"file_path"`
-	Status           *models.LetterStatus `json:"status"`
-	CreatedByID      *uint                `json:"created_by_id"`
-	VerifiedByID     *uint                `json:"verified_by_id"`
-	DisposedByID     *uint                `json:"disposed_by_id"`
-}
-
-func notFound(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
-}
-func badReq(c *fiber.Ctx, msg string) error {
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": msg})
-}
-
-func applyPatch(m *models.Letter, in *LetterReq) {
-	if in.Pengirim != nil {
-		m.Pengirim = *in.Pengirim
-	}
-	if in.NomorSurat != nil {
-		m.NomorSurat = *in.NomorSurat
-	}
-	if in.NomorAgenda != nil {
-		m.NomorAgenda = *in.NomorAgenda
-	}
-	if in.Disposisi != nil {
-		m.Disposisi = *in.Disposisi
-	}
-	if in.TanggalDisposisi != nil {
-		m.TanggalDisposisi = in.TanggalDisposisi
-	}
-	if in.BidangTujuan != nil {
-		m.BidangTujuan = *in.BidangTujuan
-	}
-	if in.JenisSurat != nil {
-		m.JenisSurat = *in.JenisSurat
-	}
-	if in.Prioritas != nil {
-		m.Prioritas = *in.Prioritas
-	}
-	if in.IsiSurat != nil {
-		m.IsiSurat = *in.IsiSurat
-	}
-	if in.TanggalSurat != nil {
-		m.TanggalSurat = in.TanggalSurat
-	}
-	if in.TanggalMasuk != nil {
-		m.TanggalMasuk = in.TanggalMasuk
-	}
-	if in.JudulSurat != nil {
-		m.JudulSurat = *in.JudulSurat
-	}
-	if in.Kesimpulan != nil {
-		m.Kesimpulan = *in.Kesimpulan
-	}
-	if in.FilePath != nil {
-		m.FilePath = *in.FilePath
-	}
-	if in.Status != nil {
-		m.Status = *in.Status
-	}
-	if in.CreatedByID != nil {
-		m.CreatedByID = in.CreatedByID
-	}
-	if in.VerifiedByID != nil {
-		m.VerifiedByID = in.VerifiedByID
-	}
-	if in.DisposedByID != nil {
-		m.DisposedByID = in.DisposedByID
-	}
-}
-
-// ---------- Handlers ----------
-
 // POST /api/letters
 func CreateLetter(c *fiber.Ctx) error {
-	var in LetterReq
-	if err := c.BodyParser(&in); err != nil {
-		return badReq(c, "invalid JSON body")
+	var req letterdto.CreateLetterRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid request body", err.Error())
 	}
 
-	// Validasi minimal
-	if in.JenisSurat == nil {
-		return badReq(c, "jenis_surat is required: masuk|keluar|internal")
-	}
-	if in.Status == nil {
-		// default di model sudah "draft", tapi jika user kirim null, biarkan default
+	if validationErrors := req.Validate(); len(validationErrors) > 0 {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
 	}
 
-	m := &models.Letter{}
-	applyPatch(m, &in)
-
-	if err := config.DB.Create(m).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	letter := req.ToModel()
+	if err := config.DB.Create(&letter).Error; err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create letter", err.Error())
 	}
-	return c.Status(fiber.StatusCreated).JSON(m)
+	response := letterdto.NewLetterResponse(&letter)
+	return utils.SuccessResponse(c, fiber.StatusCreated, "letter created successfully", response)
 }
 
 // GET /api/letters/:id
 func GetLetterByID(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var m models.Letter
-	if err := config.DB.First(&m, "id = ?", id).Error; err != nil {
+	var letter models.Letter
+	if err := config.DB.First(&letter, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return notFound(c)
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter", err.Error())
 	}
-	return c.JSON(m)
+	return utils.SuccessResponse(c, fiber.StatusOK, "letter retrieved successfully", letterdto.NewLetterResponse(&letter))
 }
 
 // GET /api/letters?page=&limit=
@@ -149,55 +58,60 @@ func ListLetters(c *fiber.Ctx) error {
 
 	var total int64
 	if err := config.DB.Model(&models.Letter{}).Count(&total).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to count letters", err.Error())
 	}
 
-	var items []models.Letter
-	if err := config.DB.
-		Order("id DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&items).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	var letters []models.Letter
+	if err := config.DB.Order("id DESC").Limit(limit).Offset(offset).Find(&letters).Error; err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letters", err.Error())
 	}
 
-	return c.JSON(fiber.Map{
-		"data":  items,
-		"page":  page,
-		"limit": limit,
-		"total": total,
-	})
+	responses := make([]letterdto.LetterResponse, 0, len(letters))
+	for i := range letters {
+		responses = append(responses, letterdto.NewLetterResponse(&letters[i]))
+	}
+
+	meta := utils.PaginationMeta{Page: page, Limit: limit, Total: total}
+	return utils.PaginatedResponse(c, fiber.StatusOK, "letters retrieved successfully", responses, meta)
 }
 
 // PUT /api/letters/:id
 func UpdateLetter(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var m models.Letter
-	if err := config.DB.First(&m, "id = ?", id).Error; err != nil {
+	var letter models.Letter
+	if err := config.DB.First(&letter, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return notFound(c)
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter", err.Error())
 	}
 
-	var in LetterReq
-	if err := c.BodyParser(&in); err != nil {
-		return badReq(c, "invalid JSON body")
+	var req letterdto.UpdateLetterRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid request body", err.Error())
 	}
 
-	applyPatch(&m, &in)
-
-	if err := config.DB.Save(&m).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	if validationErrors := req.Validate(); len(validationErrors) > 0 {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
 	}
-	return c.JSON(m)
+
+	letterdto.ApplyUpdate(&letter, &req)
+	if err := config.DB.Save(&letter).Error; err != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to update letter", err.Error())
+	}
+	return utils.SuccessResponse(c, fiber.StatusOK, "letter updated successfully", letterdto.NewLetterResponse(&letter))
 }
 
 // DELETE /api/letters/:id
 func DeleteLetter(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if err := config.DB.Delete(&models.Letter{}, "id = ?", id).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	result := config.DB.Delete(&models.Letter{}, "id = ?", id)
+	if result.Error != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to delete letter", result.Error.Error())
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	if result.RowsAffected == 0 {
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
+	}
+
+	return utils.SuccessResponse(c, fiber.StatusOK, "letter deleted successfully", nil)
 }
