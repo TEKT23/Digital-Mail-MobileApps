@@ -15,6 +15,7 @@ func Register(app *fiber.App) {
 	auth.Post("/login", handlers.Login)
 	auth.Post("/register", handlers.Register)
 	auth.Post("/refresh", handlers.RefreshToken)
+	auth.Post("/logout", handlers.Logout)
 	auth.Post("/forgot-password", handlers.RequestPasswordReset)
 	auth.Post("/reset-password", handlers.ResetPassword)
 

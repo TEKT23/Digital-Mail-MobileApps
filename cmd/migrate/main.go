@@ -21,6 +21,7 @@ func main() {
 		&models.User{},
 		&models.Letter{},
 		&models.PasswordResetToken{},
+		&models.RefreshToken{},
 	); err != nil {
 		log.Fatalf("AutoMigrate failed: %v", err)
 	}

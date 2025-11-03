@@ -77,11 +77,12 @@ func generateToken(user models.User, tokenType string, ttl time.Duration) (strin
 	now := time.Now()
 
 	claims := NewJWTClaimsFromUser(user)
+	claims.TokenType = tokenType
 	claims.RegisteredClaims = RegisteredClaims{
 		Issuer:    cfg.Issuer,
 		Subject:   strconv.FormatUint(uint64(user.ID), 10),
 		IssuedAt:  now.Unix(),
-		ExpiresAt: now.Add(cfg.AccessTokenTTL).Unix(),
+		ExpiresAt: now.Add(ttl).Unix(),
 	}
 
 	headerJSON, err := json.Marshal(jwtHeader{Alg: "HS256", Typ: "JWT"})

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Login(c *fiber.Ctx) error {
@@ -50,9 +51,18 @@ func Login(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
 	}
 
-	refreshToken, _, err := utils.GenerateRefreshToken(user)
+	refreshToken, refreshClaims, err := utils.GenerateRefreshToken(user)
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
+	}
+
+	tokenRecord := models.RefreshToken{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: time.Unix(refreshClaims.ExpiresAt, 0),
+	}
+	if err := config.DB.Create(&tokenRecord).Error; err != nil {
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to store refresh token", err.Error())
 	}
 
 	resp := dto.LoginResponse{
@@ -143,8 +153,39 @@ func RefreshToken(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
 	}
 
+	tx := config.DB.Begin()
+	if tx.Error != nil {
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to start transaction", tx.Error.Error())
+	}
+
+	var stored models.RefreshToken
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("token = ?", token).First(&stored).Error; err != nil {
+		tx.Rollback()
+		if err == gorm.ErrRecordNotFound {
+			return utils.JSONError(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
+		}
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to validate refresh token", err.Error())
+	}
+
+	if stored.UserID != claims.UserID {
+		tx.Rollback()
+		return utils.JSONError(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
+	}
+
+	if time.Now().After(stored.ExpiresAt) {
+		if err := tx.Delete(&stored).Error; err != nil {
+			tx.Rollback()
+			return utils.JSONError(c, fiber.StatusInternalServerError, "failed to invalidate refresh token", err.Error())
+		}
+		if err := tx.Commit().Error; err != nil {
+			return utils.JSONError(c, fiber.StatusInternalServerError, "failed to invalidate refresh token", err.Error())
+		}
+		return utils.JSONError(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
+	}
+
 	var user models.User
-	if err := config.DB.First(&user, claims.UserID).Error; err != nil {
+	if err := tx.First(&user, claims.UserID).Error; err != nil {
+		tx.Rollback()
 		if err == gorm.ErrRecordNotFound {
 			return utils.ErrorResponse(c, fiber.StatusUnauthorized, "user no longer exists", nil)
 		}
@@ -153,12 +194,33 @@ func RefreshToken(c *fiber.Ctx) error {
 
 	accessToken, accessClaims, err := utils.GenerateAccessToken(user)
 	if err != nil {
+		tx.Rollback()
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
 	}
 
-	refreshToken, _, err := utils.GenerateRefreshToken(user)
+	refreshToken, refreshClaims, err := utils.GenerateRefreshToken(user)
 	if err != nil {
+		tx.Rollback()
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
+	}
+
+	if err := tx.Delete(&stored).Error; err != nil {
+		tx.Rollback()
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to invalidate refresh token", err.Error())
+	}
+
+	newRecord := models.RefreshToken{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: time.Unix(refreshClaims.ExpiresAt, 0),
+	}
+	if err := tx.Create(&newRecord).Error; err != nil {
+		tx.Rollback()
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to store refresh token", err.Error())
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to store refresh token", err.Error())
 	}
 
 	resp := dto.RefreshTokenResponse{
@@ -292,6 +354,25 @@ func ResetPassword(c *fiber.Ctx) error {
 	}
 
 	return utils.SuccessResponse(c, fiber.StatusOK, "password has been reset successfully", nil)
+}
+
+func Logout(c *fiber.Ctx) error {
+	var req dto.RefreshTokenRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+	}
+
+	token := strings.TrimSpace(req.RefreshToken)
+	if token == "" {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "refresh token is required", nil)
+	}
+
+	result := config.DB.Where("token = ?", token).Delete(&models.RefreshToken{})
+	if result.Error != nil {
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to revoke refresh token", result.Error.Error())
+	}
+
+	return utils.SuccessResponse(c, fiber.StatusOK, "logout successful", nil)
 }
 
 func toUserSummary(user models.User) dto.UserSummary {
