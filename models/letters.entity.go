@@ -55,6 +55,8 @@ type Letter struct {
 	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID,references:ID"`
 	DisposedByID *uint `gorm:"index"` // Direktur
 	DisposedBy   *User `gorm:"foreignkey:DisposedByID,references:ID"`
+	UpdatedAt    time.Time
+	CreatedAt    time.Time
 }
 
 func (Letter) TableName() string {

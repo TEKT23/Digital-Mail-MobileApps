@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/mail"
 	"net/url"
 	"os"
@@ -23,35 +24,35 @@ import (
 func Login(c *fiber.Ctx) error {
 	var req dto.LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
 	email := strings.TrimSpace(req.Email)
 	password := strings.TrimSpace(req.Password)
 	if email == "" || password == "" {
-		return utils.JSONError(c, fiber.StatusBadRequest, "email and password are required", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "email and password are required", nil)
 	}
 
 	var user models.User
 	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return utils.JSONError(c, fiber.StatusUnauthorized, "invalid email or password", nil)
+			return utils.ErrorResponse(c, fiber.StatusUnauthorized, "invalid email or password", nil)
 		}
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
 	}
 
 	if !utils.CheckPassword(user.PasswordHash, password) {
-		return utils.JSONError(c, fiber.StatusUnauthorized, "invalid email or password", nil)
+		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "invalid email or password", nil)
 	}
 
 	accessToken, accessClaims, err := utils.GenerateAccessToken(user)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
 	}
 
 	refreshToken, _, err := utils.GenerateRefreshToken(user)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
 	}
 
 	resp := dto.LoginResponse{
@@ -62,13 +63,13 @@ func Login(c *fiber.Ctx) error {
 		User:         toUserSummary(user),
 	}
 
-	return utils.JSONSuccess(c, fiber.StatusOK, "login successful", resp)
+	return utils.SuccessResponse(c, fiber.StatusOK, "login successful", resp)
 }
 
 func Register(c *fiber.Ctx) error {
 	var req dto.RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
@@ -80,24 +81,24 @@ func Register(c *fiber.Ctx) error {
 	req.Atribut = strings.TrimSpace(req.Atribut)
 
 	if req.Username == "" || len(req.Username) < 3 {
-		return utils.JSONError(c, fiber.StatusBadRequest, "username must be at least 3 characters", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "username must be at least 3 characters", nil)
 	}
 	if req.Email == "" {
-		return utils.JSONError(c, fiber.StatusBadRequest, "email is required", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "email is required", nil)
 	}
 	if _, err := mail.ParseAddress(req.Email); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid email format", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid email format", nil)
 	}
 	if req.Password == "" || len(req.Password) < 8 {
-		return utils.JSONError(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
 	}
 	if !isValidRole(req.Role) {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid role provided", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid role provided", nil)
 	}
 
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to process password", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to process password", err.Error())
 	}
 
 	user := models.User{
@@ -113,9 +114,9 @@ func Register(c *fiber.Ctx) error {
 
 	if err := config.DB.Create(&user).Error; err != nil {
 		if isDuplicateEntryError(err) {
-			return utils.JSONError(c, fiber.StatusBadRequest, "username or email already exists", nil)
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, "username or email already exists", nil)
 		}
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to create user", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create user", err.Error())
 	}
 
 	resp := dto.RegisterResponse{
@@ -123,41 +124,41 @@ func Register(c *fiber.Ctx) error {
 		Message: "registration successful",
 	}
 
-	return utils.JSONSuccess(c, fiber.StatusCreated, "registration successful", resp)
+	return utils.SuccessResponse(c, fiber.StatusCreated, "registration successful", resp)
 }
 
 func RefreshToken(c *fiber.Ctx) error {
 	var req dto.RefreshTokenRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
 	token := strings.TrimSpace(req.RefreshToken)
 	if token == "" {
-		return utils.JSONError(c, fiber.StatusBadRequest, "refresh token is required", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "refresh token is required", nil)
 	}
 
 	claims, err := utils.VerifyRefreshToken(token)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
+		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "invalid or expired refresh token", nil)
 	}
 
 	var user models.User
 	if err := config.DB.First(&user, claims.UserID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return utils.JSONError(c, fiber.StatusUnauthorized, "user no longer exists", nil)
+			return utils.ErrorResponse(c, fiber.StatusUnauthorized, "user no longer exists", nil)
 		}
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
 	}
 
 	accessToken, accessClaims, err := utils.GenerateAccessToken(user)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
 	}
 
 	refreshToken, _, err := utils.GenerateRefreshToken(user)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate refresh token", err.Error())
 	}
 
 	resp := dto.RefreshTokenResponse{
@@ -167,30 +168,30 @@ func RefreshToken(c *fiber.Ctx) error {
 		ExpiresAt:    time.Unix(accessClaims.ExpiresAt, 0),
 	}
 
-	return utils.JSONSuccess(c, fiber.StatusOK, "token refreshed successfully", resp)
+	return utils.SuccessResponse(c, fiber.StatusOK, "token refreshed successfully", resp)
 }
 
 func RequestPasswordReset(c *fiber.Ctx) error {
 	var req dto.PasswordResetRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
 	req.Email = strings.TrimSpace(req.Email)
 	if req.Email == "" {
-		return utils.JSONError(c, fiber.StatusBadRequest, "email is required", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "email is required", nil)
 	}
 
 	if _, err := mail.ParseAddress(req.Email); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid email format", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid email format", nil)
 	}
 
 	var user models.User
 	if err := config.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			utils.JSONSuccess(c, fiber.StatusOK, "if the email exists, a reset link has been sent", nil)
+			utils.SuccessResponse(c, fiber.StatusOK, "if the email exists, a reset link has been sent", nil)
 		}
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
 	}
 
 	usedAt := time.Now()
@@ -200,50 +201,50 @@ func RequestPasswordReset(c *fiber.Ctx) error {
 			"used":    true,
 			"used_at": &usedAt,
 		}).Error; err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to invalidate previous reset tokens", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to invalidate previous reset tokens", err.Error())
 	}
 
 	rawToken, tokenHash, err := generateResetToken()
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to generate token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate token", err.Error())
 	}
 
 	resetToken := models.PasswordResetToken{
 		UserID:    user.ID,
 		TokenHash: tokenHash,
-		ExpiresAt: time.Now().Add(1 * time.Hour),
+		ExpiresAt: time.Now().Add(models.PasswordResetTokenTTL),
 	}
 
 	if err := config.DB.Create(&resetToken).Error; err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to store reset token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to store reset token", err.Error())
 	}
 
 	resetLink := buildResetLink(rawToken)
 	emailCfg := config.LoadEmailConfig()
 	mailClient := mailer.NewClient(emailCfg)
 	if err := mailClient.SendPasswordResetEmail(user.Email, resetLink); err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to send reset email", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to send reset email", err.Error())
 	}
-	return utils.JSONSuccess(c, fiber.StatusOK, "if the email exists, a reset link has been sent", nil)
+	return utils.SuccessResponse(c, fiber.StatusOK, "if the email exists, a reset link has been sent", nil)
 }
 
 func ResetPassword(c *fiber.Ctx) error {
-	var req dto.PasswordResetRequest
+	var req dto.PasswordResetSubmission
 	if err := c.BodyParser(&req); err != nil {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid request body", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid request body", err.Error())
 	}
 
 	req.Token = strings.TrimSpace(req.Token)
 	req.Password = strings.TrimSpace(req.Password)
 
 	if req.Token == "" {
-		return utils.JSONError(c, fiber.StatusBadRequest, "token is required", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "token is required", nil)
 	}
 	if len(req.Password) < 8 {
-		return utils.JSONError(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
 	}
 	if req.Password != req.ConfirmPassword {
-		return utils.JSONError(c, fiber.StatusBadRequest, "password confirmation does not match", nil)
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password confirmation does not match", nil)
 	}
 
 	tokenHash := hashToken(req.Token)
@@ -251,43 +252,46 @@ func ResetPassword(c *fiber.Ctx) error {
 	var reset models.PasswordResetToken
 	if err := config.DB.Preload("User").Where("token_hash = ?", tokenHash).First(&reset).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return utils.JSONError(c, fiber.StatusBadRequest, "invalid or expired token", nil)
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid or expired token", nil)
 		}
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to fetch reset token", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to fetch reset token", err.Error())
 	}
 
-	if reset.Used || time.Now().After(reset.ExpiresAt) {
-		return utils.JSONError(c, fiber.StatusBadRequest, "invalid or expired token", nil)
+	now := time.Now()
+	if err := reset.Validate(now); err != nil {
+		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid or expired token", nil)
 	}
 
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to process password", err.Error())
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to process password", err.Error())
 	}
-
-	now := time.Now()
 	if err := config.DB.Transaction(func(tx *gorm.DB) error {
+		if err := reset.Consume(tx, now); err != nil {
+			return err
+		}
+
 		if err := tx.Model(&models.User{}).
 			Where("id = ?", reset.UserID).
 			Update("password_hash", hashedPassword).Error; err != nil {
 			return err
 		}
 
-		if err := tx.Model(&models.PasswordResetToken{}).
-			Where("id = ?", reset.ID).
-			Updates(map[string]any{
-				"used":    true,
-				"used_at": &now,
-			}).Error; err != nil {
-			return err
+		if res := tx.Delete(&models.PasswordResetToken{}, reset.ID); res.Error != nil {
+			return res.Error
 		}
 
 		return nil
 	}); err != nil {
-		return utils.JSONError(c, fiber.StatusInternalServerError, "failed to reset password", err.Error())
+		switch {
+		case errors.Is(err, models.ErrPasswordResetTokenExpired), errors.Is(err, models.ErrPasswordResetTokenUsed):
+			return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid or expired token", nil)
+		default:
+			return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to reset password", err.Error())
+		}
 	}
 
-	return utils.JSONSuccess(c, fiber.StatusOK, "password has been reset successfully", nil)
+	return utils.SuccessResponse(c, fiber.StatusOK, "password has been reset successfully", nil)
 }
 
 func toUserSummary(user models.User) dto.UserSummary {

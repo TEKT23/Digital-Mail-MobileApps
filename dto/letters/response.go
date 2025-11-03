@@ -7,7 +7,7 @@ import (
 )
 
 type LetterResponse struct {
-	IDSurat          int                 `json:"id_surat"`
+	IDSurat          uint                `json:"id_surat"`
 	Pengirim         string              `json:"pengirim"`
 	NomorSurat       string              `json:"nomor_surat"`
 	NomorAgenda      string              `json:"nomor_agenda"`
@@ -24,8 +24,11 @@ type LetterResponse struct {
 	FilePath         string              `json:"file_path"`
 	Status           models.LetterStatus `json:"status"`
 	CreatedByID      *uint               `json:"created_by_id"`
+	CreatedBy        *models.User        `json:"created_by"`
 	VerifiedByID     *uint               `json:"verified_by_id"`
+	VerifiedBy       *models.User        `json:"verified_by"`
 	DisposedByID     *uint               `json:"disposed_by_id"`
+	DisposedBy       *models.User        `json:"disposed_by"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
 }
@@ -53,8 +56,11 @@ func NewLetterResponse(letter *models.Letter) LetterResponse {
 		FilePath:         letter.FilePath,
 		Status:           letter.Status,
 		CreatedByID:      letter.CreatedByID,
+		CreatedBy:        letter.CreatedBy,
 		VerifiedByID:     letter.VerifiedByID,
+		VerifiedBy:       letter.VerifiedBy,
 		DisposedByID:     letter.DisposedByID,
+		DisposedBy:       letter.DisposedBy,
 		CreatedAt:        letter.CreatedAt,
 		UpdatedAt:        letter.UpdatedAt,
 	}

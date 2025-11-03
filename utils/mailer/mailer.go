@@ -1,11 +1,21 @@
 package mailer
 
 import (
+	"bytes"
 	"crypto/tls"
+	"embed"
 	"fmt"
+	"html/template"
 	"net/smtp"
 
 	"TugasAkhir/config"
+)
+
+var (
+	//go:embed templates/password_reset.html
+	emailTemplates embed.FS
+
+	passwordResetTemplate = template.Must(template.New("password_reset.html").ParseFS(emailTemplates, "templates/password_reset.html"))
 )
 
 type Client struct {
@@ -32,7 +42,16 @@ func (c *Client) SendPasswordResetEmail(toEmail, resetLink string) error {
 	addr := fmt.Sprintf("%s:%d", c.cfg.Host, c.cfg.Port)
 	auth := smtp.PlainAuth("", c.cfg.Username, c.cfg.Password, c.cfg.Host)
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Reset Password\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\nHalo,\r\n\r\nKami menerima permintaan untuk mengatur ulang kata sandi Anda. Silakan buka tautan berikut untuk melanjutkan proses reset kata sandi:\r\n%s\r\n\r\nJika Anda tidak meminta reset kata sandi, abaikan email ini.\r\n", from, toEmail, resetLink)
+	body := bytes.Buffer{}
+	data := struct {
+		ResetLink string
+	}{ResetLink: resetLink}
+
+	if err := passwordResetTemplate.Execute(&body, data); err != nil {
+		return fmt.Errorf("render password reset template: %w", err)
+	}
+
+	msg := buildHTMLMessage(from, toEmail, "Reset Password", body.String())
 
 	if c.cfg.Username == "" && c.cfg.Password == "" {
 		return smtp.SendMail(addr, nil, from, []string{toEmail}, []byte(msg))
@@ -84,4 +103,7 @@ func (c *Client) sendSMTPTLS(addr string, auth smtp.Auth, from, toEmail, msg str
 	}
 
 	return client.Quit()
+}
+func buildHTMLMessage(from, to, subject, htmlBody string) string {
+	return fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=\"utf-8\"\r\n\r\n%s", from, to, subject, htmlBody)
 }
