@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type LetterType string
@@ -30,8 +28,7 @@ const (
 )
 
 type Letter struct {
-	gorm.Model
-	IDSurat          int        `gorm:"primaryKey;autoIncrement:true"`
+	IDSurat          uint       `gorm:"primaryKey;autoIncrement:true"`
 	Pengirim         string     `gorm:"type:varchar(200);index"`
 	NomorSurat       string     `gorm:"type:varchar(100);index"`
 	NomorAgenda      string     `gorm:"type:varchar(100);index"`
@@ -53,8 +50,11 @@ type Letter struct {
 
 	//relation
 	CreatedByID  *uint `gorm:"index"` // Bagian Umum
+	CreatedBy    *User `gorm:"foreignkey:CreatedByID,references:ID"`
 	VerifiedByID *uint `gorm:"index"` // ADC
+	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID,references:ID"`
 	DisposedByID *uint `gorm:"index"` // Direktur
+	DisposedBy   *User `gorm:"foreignkey:DisposedByID,references:ID"`
 }
 
 func (Letter) TableName() string {
