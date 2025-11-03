@@ -9,9 +9,13 @@ import (
 )
 
 func main() {
+	if err := config.Validate(); err != nil {
+		log.Fatalf("configuration validation failed: %v", err)
+	}
+
 	config.ConnectDB()
 	app := fiber.New()
-		
+
 	routes.Register(app)
 
 	log.Println("🚀 API running on :8080")
