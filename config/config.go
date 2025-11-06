@@ -11,7 +11,6 @@ import (
 // Validate ensures all configuration sections have the required environment
 // variables set and that optional values are well-formed.
 func Validate() error {
-	LoadEnv()
 
 	if err := ValidateDatabaseConfig(); err != nil {
 		return fmt.Errorf("database configuration: %w", err)
@@ -31,7 +30,7 @@ func Validate() error {
 // ValidateDatabaseConfig ensures all required database environment variables
 // are present.
 func ValidateDatabaseConfig() error {
-	required := []string{"DB_HOST", "DB_PORT", "DB_USER", "DB_PASS", "DB_NAME"}
+	required := []string{"DB_HOST", "DB_PORT", "DB_USER", "DB_NAME"}
 
 	var missing []string
 	for _, key := range required {

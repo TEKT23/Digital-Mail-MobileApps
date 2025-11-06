@@ -20,6 +20,8 @@ import (
 )
 
 func main() {
+	config.LoadEnv()
+
 	if err := config.Validate(); err != nil {
 		log.Fatalf("configuration validation failed: %v", err)
 	}

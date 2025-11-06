@@ -14,7 +14,6 @@ type EmailConfig struct {
 }
 
 func LoadEmailConfig() EmailConfig {
-	LoadEnv()
 
 	port, err := strconv.Atoi(os.Getenv("SMTP_PORT"))
 	if err != nil || port <= 0 {

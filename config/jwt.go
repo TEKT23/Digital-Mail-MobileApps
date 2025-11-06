@@ -21,7 +21,6 @@ var (
 
 func LoadJWTConfig() JWTConfig {
 	jwtOnce.Do(func() {
-		LoadEnv()
 
 		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
@@ -55,7 +54,7 @@ func LoadJWTConfig() JWTConfig {
 			SecretKey:       []byte(secret),
 			Issuer:          issuer,
 			AccessTokenTTL:  ttl,
-			RefreshTokenTTL: ttl,
+			RefreshTokenTTL: refreshTTL,
 		}
 	})
 
