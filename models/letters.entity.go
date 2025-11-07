@@ -50,11 +50,11 @@ type Letter struct {
 
 	//relation
 	CreatedByID  *uint `gorm:"index"` // Bagian Umum
-	CreatedBy    *User `gorm:"foreignkey:CreatedByID,references:ID"`
+	CreatedBy    *User `gorm:"foreignkey:CreatedByID"`
 	VerifiedByID *uint `gorm:"index"` // ADC
-	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID,references:ID"`
+	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID"`
 	DisposedByID *uint `gorm:"index"` // Direktur
-	DisposedBy   *User `gorm:"foreignkey:DisposedByID,references:ID"`
+	DisposedBy   *User `gorm:"foreignkey:DisposedByID"`
 	UpdatedAt    time.Time
 	CreatedAt    time.Time
 }
