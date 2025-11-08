@@ -46,7 +46,7 @@ func Login(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "invalid email or password", nil)
 	}
 
-	accessToken, accessClaims, err := utils.GenerateAccessToken(user)
+	accessToken, _, err := utils.GenerateAccessToken(user)
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
 	}
@@ -59,7 +59,7 @@ func Login(c *fiber.Ctx) error {
 	tokenRecord := models.RefreshToken{
 		UserID:    user.ID,
 		Token:     refreshToken,
-		ExpiresAt: time.Unix(refreshClaims.ExpiresAt, 0),
+		ExpiresAt: refreshClaims.ExpiresAt.Time,
 	}
 	if err := config.DB.Create(&tokenRecord).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to store refresh token", err.Error())
@@ -69,7 +69,7 @@ func Login(c *fiber.Ctx) error {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
-		ExpiresAt:    time.Unix(accessClaims.ExpiresAt, 0),
+		ExpiresAt:    refreshClaims.ExpiresAt.Time,
 		User:         toUserSummary(user),
 	}
 
@@ -192,7 +192,7 @@ func RefreshToken(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to fetch user", err.Error())
 	}
 
-	accessToken, accessClaims, err := utils.GenerateAccessToken(user)
+	accessToken, _, err := utils.GenerateAccessToken(user)
 	if err != nil {
 		tx.Rollback()
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to generate access token", err.Error())
@@ -212,7 +212,7 @@ func RefreshToken(c *fiber.Ctx) error {
 	newRecord := models.RefreshToken{
 		UserID:    user.ID,
 		Token:     refreshToken,
-		ExpiresAt: time.Unix(refreshClaims.ExpiresAt, 0),
+		ExpiresAt: refreshClaims.ExpiresAt.Time,
 	}
 	if err := tx.Create(&newRecord).Error; err != nil {
 		tx.Rollback()
@@ -227,7 +227,7 @@ func RefreshToken(c *fiber.Ctx) error {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		TokenType:    "Bearer",
-		ExpiresAt:    time.Unix(accessClaims.ExpiresAt, 0),
+		ExpiresAt:    refreshClaims.ExpiresAt.Time,
 	}
 
 	return utils.SuccessResponse(c, fiber.StatusOK, "token refreshed successfully", resp)
