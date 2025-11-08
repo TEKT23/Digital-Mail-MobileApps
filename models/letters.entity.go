@@ -2,6 +2,8 @@ package models
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type LetterType string
@@ -28,6 +30,7 @@ const (
 )
 
 type Letter struct {
+	gorm.Model
 	IDSurat          uint       `gorm:"primaryKey;autoIncrement:true"`
 	Pengirim         string     `gorm:"type:varchar(200);index"`
 	NomorSurat       string     `gorm:"type:varchar(100);index"`
