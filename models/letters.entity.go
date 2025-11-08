@@ -31,7 +31,6 @@ const (
 
 type Letter struct {
 	gorm.Model
-	IDSurat          uint       `gorm:"primaryKey;autoIncrement:true"`
 	Pengirim         string     `gorm:"type:varchar(200);index"`
 	NomorSurat       string     `gorm:"type:varchar(100);index"`
 	NomorAgenda      string     `gorm:"type:varchar(100);index"`
@@ -58,8 +57,6 @@ type Letter struct {
 	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID"`
 	DisposedByID *uint `gorm:"index"` // Direktur
 	DisposedBy   *User `gorm:"foreignkey:DisposedByID"`
-	UpdatedAt    time.Time
-	CreatedAt    time.Time
 }
 
 func (Letter) TableName() string {

@@ -35,11 +35,14 @@ type LetterResponse struct {
 
 func NewLetterResponse(letter *models.Letter) LetterResponse {
 	if letter == nil {
-		return LetterResponse{}
+		return LetterResponse{
+			IDSurat:  letter.ID,
+			Pengirim: letter.Pengirim,
+		}
 	}
 
 	return LetterResponse{
-		IDSurat:          letter.IDSurat,
+		IDSurat:          letter.ID,
 		Pengirim:         letter.Pengirim,
 		NomorSurat:       letter.NomorSurat,
 		NomorAgenda:      letter.NomorAgenda,
