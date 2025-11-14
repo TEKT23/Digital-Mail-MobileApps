@@ -3,6 +3,7 @@ package main
 import (
 	"TugasAkhir/config"
 	"TugasAkhir/routes"
+	"TugasAkhir/utils/fcm"
 	"context"
 	"errors"
 	"log"
@@ -44,6 +45,7 @@ func main() {
 
 	go func() {
 		log.Println("🚀 API running on :8080")
+		go fcm.StartNotifierConsumer(ctx)
 		if err := app.Listen(":8080"); err != nil && !errors.Is(err, net.ErrClosed) {
 			log.Fatalf("fiber server error: %v", err)
 		}

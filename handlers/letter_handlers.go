@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"TugasAkhir/utils"
+	"TugasAkhir/utils/events"
 	"strconv"
 
 	"TugasAkhir/config"
@@ -27,6 +28,12 @@ func CreateLetter(c *fiber.Ctx) error {
 	if err := config.DB.Create(&letter).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create letter", err.Error())
 	}
+
+	events.LetterEventBus <- events.LetterEvent{
+		Type:   events.LetterCreated,
+		Letter: letter,
+	}
+
 	response := letterdto.NewLetterResponse(&letter)
 	return utils.SuccessResponse(c, fiber.StatusCreated, "letter created successfully", response)
 }
@@ -86,6 +93,8 @@ func UpdateLetter(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter", err.Error())
 	}
 
+	oldStatus := letter.Status
+
 	var req letterdto.UpdateLetterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid request body", err.Error())
@@ -98,6 +107,13 @@ func UpdateLetter(c *fiber.Ctx) error {
 	letterdto.ApplyUpdate(&letter, &req)
 	if err := config.DB.Save(&letter).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to update letter", err.Error())
+	}
+	if oldStatus != letter.Status {
+		events.LetterEventBus <- events.LetterEvent{
+			Type:      events.LetterStatusMoved,
+			Letter:    letter,
+			OldStatus: oldStatus,
+		}
 	}
 	return utils.SuccessResponse(c, fiber.StatusOK, "letter updated successfully", letterdto.NewLetterResponse(&letter))
 }
