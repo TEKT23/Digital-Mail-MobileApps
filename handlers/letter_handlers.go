@@ -3,10 +3,12 @@ package handlers
 import (
 	"TugasAkhir/utils"
 	"TugasAkhir/utils/events"
+	"errors"
 	"strconv"
 
 	"TugasAkhir/config"
 	letterdto "TugasAkhir/dto/letters"
+	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 
 	"github.com/gofiber/fiber/v2"
@@ -24,7 +26,13 @@ func CreateLetter(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
 	}
 
+	claims, ok := middleware.GetJWTClaims(c)
+	if !ok {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "authorization context missing", nil)
+	}
+
 	letter := req.ToModel()
+	letter.CreatedByID = &claims.UserID
 	if err := config.DB.Create(&letter).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create letter", err.Error())
 	}
@@ -93,8 +101,6 @@ func UpdateLetter(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter", err.Error())
 	}
 
-	oldStatus := letter.Status
-
 	var req letterdto.UpdateLetterRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid request body", err.Error())
@@ -104,10 +110,36 @@ func UpdateLetter(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
 	}
 
+	claims, ok := middleware.GetJWTClaims(c)
+	if !ok {
+		return utils.ErrorResponse(c, fiber.StatusForbidden, "authorization context missing", nil)
+	}
+	userRole := claims.Role
+
+	//isAdmin?
+	if userRole != models.RoleAdmin {
+		if err := validateWorkflowUpdate(userRole, &letter, &req); err != nil {
+			return utils.ErrorResponse(c, fiber.StatusForbidden, err.Error(), nil)
+		}
+	}
+
+	oldStatus := letter.Status
+
 	letterdto.ApplyUpdate(&letter, &req)
+
+	if userRole != models.RoleAdmin {
+		if userRole == models.RoleADC && letter.Status == models.StatusBelumDisposisi && oldStatus == models.StatusPerluDisposisi {
+			letter.VerifiedByID = &claims.UserID
+		}
+		if userRole == models.RoleDirektur && letter.Status == models.StatusSudahDisposisi && oldStatus == models.StatusBelumDisposisi {
+			letter.DisposedByID = &claims.UserID
+		}
+	}
+
 	if err := config.DB.Save(&letter).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to update letter", err.Error())
 	}
+
 	if oldStatus != letter.Status {
 		events.LetterEventBus <- events.LetterEvent{
 			Type:      events.LetterStatusMoved,
@@ -130,4 +162,56 @@ func DeleteLetter(c *fiber.Ctx) error {
 	}
 
 	return utils.SuccessResponse(c, fiber.StatusOK, "letter deleted successfully", nil)
+}
+
+func validateWorkflowUpdate(role models.Role, letter *models.Letter, req *letterdto.UpdateLetterRequest) error {
+
+	newStatus := letter.Status
+	if req.Status != nil {
+		newStatus = *req.Status
+	}
+
+	switch role {
+	//Rule Bagian Umum
+	case models.RoleBagianUmum:
+		if letter.Status != models.StatusDraft && newStatus == models.StatusDraft {
+		} else if letter.Status != models.StatusDraft {
+			return errors.New("bagian umum hanya dapat mengedit surat dengan status 'draft'")
+		}
+
+		//Rule ADC
+	case models.RoleADC:
+		if letter.Status != models.StatusPerluDisposisi {
+			return errors.New("ADC hanya dapat memproses surat dengan status 'perlu_disposisi'")
+		}
+
+		if newStatus != letter.Status && newStatus != models.StatusBelumDisposisi {
+			return errors.New("ADC hanya dapat mengubah status ke 'belum_disposisi' (verifikasi)")
+		}
+
+		if req.Disposisi != nil || req.TanggalDisposisi != nil || req.BidangTujuan != nil {
+			return errors.New("ADC tidak memiliki izin untuk mengisi data disposisi")
+		}
+		//rule direktur
+	case models.RoleDirektur:
+		if req.Pengirim != nil || req.NomorSurat != nil || req.NomorAgenda != nil ||
+			req.JenisSurat != nil || req.IsiSurat != nil ||
+			req.JudulSurat != nil || req.Kesimpulan != nil || req.FilePath != nil {
+			return errors.New("direktur tidak memiliki izin untuk mengubah konten utama surat, hanya disposisi")
+		}
+
+		if newStatus != letter.Status {
+			if newStatus != models.StatusSudahDisposisi {
+				return errors.New("direktur hanya dapat mengubah status ke 'sudah_disposisi'")
+			}
+			if letter.Status != models.StatusBelumDisposisi {
+				return errors.New("surat ini belum siap untuk disposisi oleh Direktur (status saat ini: " + string(letter.Status) + ")")
+			}
+		}
+
+	default:
+		return errors.New("role Anda tidak memiliki izin untuk memperbarui surat")
+	}
+
+	return nil
 }

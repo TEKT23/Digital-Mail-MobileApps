@@ -11,6 +11,7 @@ import (
 func Register(app *fiber.App) {
 	api := app.Group("/api")
 
+	//Authentication
 	auth := api.Group("/auth")
 	auth.Post("/login", handlers.Login)
 	auth.Post("/register", handlers.Register)
@@ -19,21 +20,59 @@ func Register(app *fiber.App) {
 	auth.Post("/forgot-password", handlers.RequestPasswordReset)
 	auth.Post("/reset-password", handlers.ResetPassword)
 
-	letters := api.Group("/letters",
-		middleware.RequireAuth(),
+	api.Use(middleware.RequireAuth())
+	//Create Letter
+	api.Post("/letters",
+		middleware.AuthorizeRoles(
+			models.RoleBagianUmum,
+			models.RoleAdmin,
+		),
+		handlers.CreateLetter,
+	)
+
+	//Get All Letter
+	api.Get("/letters",
 		middleware.AuthorizeRoles(
 			models.RoleBagianUmum,
 			models.RoleADC,
 			models.RoleDirektur,
 			models.RoleAdmin,
 		),
+		handlers.ListLetters,
 	)
-	letters.Post("", handlers.CreateLetter)
-	letters.Get("", handlers.ListLetters)
-	letters.Get("/:id", handlers.GetLetterByID)
-	letters.Put("/:id", handlers.UpdateLetter)
-	letters.Delete("/:id", handlers.DeleteLetter)
 
+	//Get Letter by ID
+	api.Get("/letters/:id",
+		middleware.AuthorizeRoles(
+			models.RoleBagianUmum,
+			models.RoleADC,
+			models.RoleDirektur,
+			models.RoleAdmin,
+		),
+		handlers.GetLetterByID,
+	)
+
+	//Update Letter
+	api.Put("/letters/:id",
+		middleware.AuthorizeRoles(
+			models.RoleBagianUmum,
+			models.RoleADC,
+			models.RoleDirektur,
+			models.RoleAdmin,
+		),
+		handlers.UpdateLetter,
+	)
+
+	//Delete Letter
+	api.Delete("/letters/:id",
+		middleware.AuthorizeRoles(
+			models.RoleBagianUmum,
+			models.RoleAdmin,
+		),
+		handlers.DeleteLetter,
+	)
+
+	//admin zone
 	admin := api.Group("/admin",
 		middleware.RequireAuth(),
 		middleware.AuthorizeRoles(models.RoleAdmin),
