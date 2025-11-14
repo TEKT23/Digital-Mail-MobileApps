@@ -12,42 +12,28 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
-	"google.golang.org/api/option"
 )
 
 const (
-	// FCMTopicPrefix adalah prefix untuk semua topik berbasis role
 	FCMTopicPrefix = "digitalmail_role_"
-
-	// Path ke service account key Anda.
-	// Asumsi file ini ada di root folder proyek Anda.
-	ServiceAccountKeyPath = "D:\\Development\\Sistem Penyuratan Digital\\digimail-mobile-firebase-adminsdk-fbsvc-77c65bbf85.json"
 )
 
 var (
-	// fcmClient adalah client Firebase Messaging yang diinisialisasi secara global
 	fcmClient *messaging.Client
 )
 
-// init() adalah fungsi khusus Go yang berjalan sekali saat package ini di-load.
-// Kita gunakan ini untuk inisialisasi Firebase Admin SDK secara global.
 func init() {
 	log.Println("Initializing Firebase Admin SDK...")
 
-	opt := option.WithCredentialsFile(ServiceAccountKeyPath)
-
-	// Gunakan context background untuk inisialisasi
 	ctx := context.Background()
 
 	config := &firebase.Config{
 		ProjectID: "digimail-mobile",
 	}
-
-	app, err := firebase.NewApp(ctx, config, opt)
+	app, err := firebase.NewApp(ctx, config)
 	if err != nil {
 		log.Fatalf("error initializing Firebase app: %v\n", err)
 	}
-
 	client, err := app.Messaging(ctx)
 	if err != nil {
 		log.Fatalf("error getting Firebase Messaging client: %v\n", err)
