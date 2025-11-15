@@ -4,6 +4,7 @@ import (
 	"TugasAkhir/config"
 	"TugasAkhir/routes"
 	"TugasAkhir/utils/fcm"
+	"TugasAkhir/utils/storage"
 	"context"
 	"errors"
 	"log"
@@ -31,6 +32,7 @@ func main() {
 	defer stop()
 
 	config.ConnectDB()
+	storage.InitS3Client()
 	app := fiber.New()
 
 	app.Use(requestid.New())

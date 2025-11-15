@@ -3,7 +3,14 @@ package handlers
 import (
 	"TugasAkhir/utils"
 	"TugasAkhir/utils/events"
+	"TugasAkhir/utils/storage"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"TugasAkhir/config"
@@ -12,18 +19,32 @@ import (
 	"TugasAkhir/models"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 // POST /api/letters
 func CreateLetter(c *fiber.Ctx) error {
+	jsonData := c.FormValue("data")
+	if jsonData == "" {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "form field 'data' (JSON string) is required", nil)
+	}
+
 	var req letterdto.CreateLetterRequest
-	if err := c.BodyParser(&req); err != nil {
-		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid request body", err.Error())
+	if err := json.Unmarshal([]byte(jsonData), &req); err != nil {
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid 'data' field (must be a valid JSON string)", err.Error())
 	}
 
 	if validationErrors := req.Validate(); len(validationErrors) > 0 {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
+	}
+
+	fileHeader, err := c.FormFile("file_surat")
+	if err != nil {
+		if err == http.ErrMissingFile {
+			return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "form field 'file_surat' (file upload) is required", nil)
+		}
+		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "invalid file upload", err.Error())
 	}
 
 	claims, ok := middleware.GetJWTClaims(c)
@@ -31,9 +52,19 @@ func CreateLetter(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusForbidden, "authorization context missing", nil)
 	}
 
+	ext := filepath.Ext(fileHeader.Filename)
+	s3key := fmt.Sprintf("surat/%d%s%s", claims.UserID, uuid.NewString(), ext)
+
+	if _, err := storage.UploadFile(c.Context(), fileHeader, s3key); err != nil {
+		return utils.ErrorResponse(c, fiber.ErrInternalServerError.Code, "upload file error", err.Error())
+	}
+
 	letter := req.ToModel()
 	letter.CreatedByID = &claims.UserID
+	letter.FilePath = s3key
+
 	if err := config.DB.Create(&letter).Error; err != nil {
+		go storage.DeleteFile(context.Background(), s3key)
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create letter", err.Error())
 	}
 
@@ -55,6 +86,15 @@ func GetLetterByID(c *fiber.Ctx) error {
 			return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
 		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter", err.Error())
+	}
+
+	if letter.FilePath != "" {
+		predesignURL, err := storage.GetPresignedURL(letter.FilePath)
+		if err != nil {
+			log.Printf("Failed to get presigned URL for key %s : %sv", letter.FilePath, err)
+		} else {
+			letter.FilePath = predesignURL
+		}
 	}
 	return utils.SuccessResponse(c, fiber.StatusOK, "letter retrieved successfully", letterdto.NewLetterResponse(&letter))
 }
@@ -79,6 +119,20 @@ func ListLetters(c *fiber.Ctx) error {
 	var letters []models.Letter
 	if err := config.DB.Order("id DESC").Limit(limit).Offset(offset).Find(&letters).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letters", err.Error())
+	}
+
+	for i := range letters {
+		letter := &letters[i]
+
+		if letter.FilePath != "" {
+			presignedURL, err := storage.GetPresignedURL(letter.FilePath)
+			if err != nil {
+				log.Printf("Failed to presign URL for key %s in list: %v", letter.FilePath, err)
+				letter.FilePath = ""
+			} else {
+				letter.FilePath = presignedURL
+			}
+		}
 	}
 
 	responses := make([]letterdto.LetterResponse, 0, len(letters))
@@ -153,12 +207,31 @@ func UpdateLetter(c *fiber.Ctx) error {
 // DELETE /api/letters/:id
 func DeleteLetter(c *fiber.Ctx) error {
 	id := c.Params("id")
+
+	var letter models.Letter
+	if err := config.DB.First(&letter, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
+		}
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letter for deletion", err.Error())
+	}
+
 	result := config.DB.Delete(&models.Letter{}, "id = ?", id)
 	if result.Error != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to delete letter", result.Error.Error())
 	}
 	if result.RowsAffected == 0 {
 		return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
+	}
+
+	if letter.FilePath != "" {
+		go func(key string) {
+			if err := storage.DeleteFile(context.Background(), key); err != nil {
+				log.Println("Failed to delete s3 object %s during letter deletion: %v", key, err)
+			} else {
+				log.Printf("Successfully deleted S3 object %s", key)
+			}
+		}(letter.FilePath)
 	}
 
 	return utils.SuccessResponse(c, fiber.StatusOK, "letter deleted successfully", nil)
