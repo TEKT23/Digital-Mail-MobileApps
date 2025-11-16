@@ -182,7 +182,7 @@ func UpdateLetter(c *fiber.Ctx) error {
 	letterdto.ApplyUpdate(&letter, &req)
 
 	if userRole != models.RoleAdmin {
-		if userRole == models.RoleADC && letter.Status == models.StatusBelumDisposisi && oldStatus == models.StatusPerluDisposisi {
+		if userRole == models.RoleADC && letter.Status == models.StatusBelumDisposisi && oldStatus == models.StatusPerluVerifikasi {
 			letter.VerifiedByID = &claims.UserID
 		}
 		if userRole == models.RoleDirektur && letter.Status == models.StatusSudahDisposisi && oldStatus == models.StatusBelumDisposisi {
@@ -254,7 +254,7 @@ func validateWorkflowUpdate(role models.Role, letter *models.Letter, req *letter
 
 		//Rule ADC
 	case models.RoleADC:
-		if letter.Status != models.StatusPerluDisposisi {
+		if letter.Status != models.StatusPerluVerifikasi {
 			return errors.New("ADC hanya dapat memproses surat dengan status 'perlu_disposisi'")
 		}
 

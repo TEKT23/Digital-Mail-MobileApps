@@ -23,10 +23,10 @@ const (
 )
 
 const (
-	StatusDraft          LetterStatus = "draft"
-	StatusPerluDisposisi LetterStatus = "perlu_disposisi"
-	StatusBelumDisposisi LetterStatus = "belum_disposisi"
-	StatusSudahDisposisi LetterStatus = "sudah_disposisi"
+	StatusDraft           LetterStatus = "draft"
+	StatusPerluVerifikasi LetterStatus = "perlu_verifikasi"
+	StatusBelumDisposisi  LetterStatus = "belum_disposisi"
+	StatusSudahDisposisi  LetterStatus = "sudah_disposisi"
 )
 
 type Letter struct {
@@ -48,7 +48,7 @@ type Letter struct {
 	Kesimpulan   string     `gorm:"type:text"`
 	FilePath     string     `gorm:"type:varchar(255)"`
 
-	Status LetterStatus `gorm:"type:ENUM('draft','perlu_disposisi','belum_disposisi','sudah_disposisi');default:'draft';not null;index"`
+	Status LetterStatus `gorm:"type:ENUM('draft','perlu_verifikasi','belum_disposisi','sudah_disposisi');default:'draft';not null;index"`
 
 	//relation
 	CreatedByID  *uint `gorm:"index"` // Bagian Umum

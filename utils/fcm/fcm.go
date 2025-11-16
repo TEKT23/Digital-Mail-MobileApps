@@ -108,34 +108,11 @@ func StartNotifierConsumer(ctx context.Context) {
 
 				switch e.Type {
 
-				// --- KASUS: SURAT BARU DIBUAT ---
+				// surat baru dibuat
 				case events.LetterCreated:
-					log.Printf("Event: Letter Created (ID: %d)", e.Letter.ID)
+					log.Printf("Event: Letter Created (ID: %d). No notification sent.", e.Letter.ID)
 
-					title := "Surat Baru Dibuat"
-					data := map[string]string{
-						"letter_id": letterIDStr,
-						"action":    "letter_created",
-						"status":    string(e.Letter.Status),
-					}
-
-					// Target 1: ADC (Perlu Verifikasi)
-					//
-					bodyADC := fmt.Sprintf("Surat masuk \"%s\" memerlukan verifikasi Anda.", e.Letter.JudulSurat)
-					topicADC := mapRoleToTopic(models.RoleADC)
-					if err := SendNotificationToTopic(sendCtx, topicADC, title, bodyADC, data); err != nil {
-						log.Printf("Error sending FCM to ADC: %v", err)
-					}
-
-					// Target 2: Direktur (Hanya Pemberitahuan)
-					//
-					bodyDirektur := fmt.Sprintf("Telah masuk surat baru: \"%s\".", e.Letter.JudulSurat)
-					topicDirektur := mapRoleToTopic(models.RoleDirektur)
-					if err := SendNotificationToTopic(sendCtx, topicDirektur, title, bodyDirektur, data); err != nil {
-						log.Printf("Error sending FCM to Direktur: %v", err)
-					}
-
-				// --- KASUS: STATUS SURAT BERUBAH ---
+				// kalau status surat berubah
 				case events.LetterStatusMoved:
 					log.Printf("Event: Letter Status Moved (ID: %d, New Status: %s)", e.Letter.ID, e.Letter.Status)
 
@@ -146,10 +123,27 @@ func StartNotifierConsumer(ctx context.Context) {
 					switch e.Letter.Status {
 
 					// Dari Draft -> Perlu Disposisi (Target: ADC)
-					case models.StatusPerluDisposisi:
-						targetRole = models.RoleADC //
+					case models.StatusPerluVerifikasi: // <-- Nama status baru
 						title = "Surat Perlu Verifikasi"
-						body = fmt.Sprintf("Surat \"%s\" (No. %s) memerlukan verifikasi Anda.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						data := map[string]string{
+							"letter_id": letterIDStr,
+							"action":    "status_change",
+							"status":    string(e.Letter.Status),
+						}
+
+						bodyADC := fmt.Sprintf("Surat \"%s\" (No. %s) memerlukan verifikasi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						topicADC := mapRoleToTopic(models.RoleADC)
+						if err := SendNotificationToTopic(sendCtx, topicADC, title, bodyADC, data); err != nil {
+							log.Printf("Error sending FCM to ADC: %v", err)
+						}
+
+						bodyDirektur := fmt.Sprintf("Surat masuk \"%s\" (No. %s) sedang diverifikasi ADC.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						topicDirektur := mapRoleToTopic(models.RoleDirektur)
+						if err := SendNotificationToTopic(sendCtx, topicDirektur, title, bodyDirektur, data); err != nil {
+							log.Printf("Error sending FCM to Direktur: %v", err)
+						}
+
+						return
 
 					// Dari Perlu Disposisi -> Belum Disposisi (Target: Direktur)
 					case models.StatusBelumDisposisi:
@@ -157,12 +151,33 @@ func StartNotifierConsumer(ctx context.Context) {
 						title = "Surat Siap Disposisi"
 						body = fmt.Sprintf("Surat \"%s\" (No. %s) siap untuk disposisi Anda.", e.Letter.JudulSurat, e.Letter.NomorSurat)
 
+					case models.StatusSudahDisposisi:
+						title = "Surat Selesai Disposisi"
+						body = fmt.Sprintf("Surat \"%s\" (No. %s) telah selesai didisposisi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						data := map[string]string{
+							"letter_id": letterIDStr,
+							"action":    "status_change",
+							"status":    string(e.Letter.Status),
+						}
+
+						// notif ke adc
+						topicADC := mapRoleToTopic(models.RoleADC)
+						if err := SendNotificationToTopic(sendCtx, topicADC, title, body, data); err != nil {
+							log.Printf("Error sending FCM to ADC: %v", err)
+						}
+
+						// notif ke bagian umum
+						topicBU := mapRoleToTopic(models.RoleBagianUmum)
+						if err := SendNotificationToTopic(sendCtx, topicBU, title, body, data); err != nil {
+							log.Printf("Error sending FCM to Bagian Umum: %v", err)
+						}
+
+						return
+						
 					default:
-						// Abaikan perubahan status lainnya (misal: 'sudah_disposisi' atau 'draft')
 						return
 					}
 
-					// Kirim notifikasi jika ada target
 					if targetRole != "" {
 						topic := mapRoleToTopic(targetRole)
 						data := map[string]string{
@@ -178,7 +193,6 @@ func StartNotifierConsumer(ctx context.Context) {
 			}(event)
 
 		case <-ctx.Done():
-			// Jika context dibatalkan (misal: server shutdown), hentikan consumer
 			log.Println("FCM Notifier Consumer stopped.")
 			return
 		}
