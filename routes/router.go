@@ -26,6 +26,7 @@ func Register(app *fiber.App) {
 		middleware.AuthorizeRoles(
 			models.RoleBagianUmum,
 			models.RoleAdmin,
+			models.RoleADC,
 		),
 		handlers.CreateLetter,
 	)

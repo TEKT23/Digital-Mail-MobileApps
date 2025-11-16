@@ -110,7 +110,8 @@ func isValidPriority(p models.Priority) bool {
 
 func isValidLetterStatus(s models.LetterStatus) bool {
 	switch s {
-	case models.StatusDraft, models.StatusPerluVerifikasi, models.StatusBelumDisposisi, models.StatusSudahDisposisi:
+	case models.StatusDraft, models.StatusPerluVerifikasi, models.StatusBelumDisposisi, models.StatusSudahDisposisi,
+		models.StatusPerluPersetujuan, models.StatusPerluRevisi, models.StatusDisetujui, models.StatusTerkirim:
 		return true
 	default:
 		return false

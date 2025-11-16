@@ -172,8 +172,21 @@ func StartNotifierConsumer(ctx context.Context) {
 							log.Printf("Error sending FCM to Bagian Umum: %v", err)
 						}
 
-						return
-						
+					case models.StatusPerluPersetujuan:
+						targetRole = models.RoleDirektur //
+						title = "Surat Keluar Perlu Persetujuan"
+						body = fmt.Sprintf("Surat keluar \"%s\" memerlukan persetujuan Anda.", e.Letter.JudulSurat)
+
+					case models.StatusPerluRevisi:
+						targetRole = models.RoleADC //
+						title = "Surat Keluar Perlu Revisi"
+						body = fmt.Sprintf("Surat keluar \"%s\" perlu revisi dari Direktur.", e.Letter.JudulSurat)
+
+					case models.StatusDisetujui:
+						targetRole = models.RoleADC //
+						title = "Surat Keluar Disetujui"
+						body = fmt.Sprintf("Surat keluar \"%s\" telah disetujui.", e.Letter.JudulSurat)
+
 					default:
 						return
 					}

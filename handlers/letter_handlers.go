@@ -182,11 +182,20 @@ func UpdateLetter(c *fiber.Ctx) error {
 	letterdto.ApplyUpdate(&letter, &req)
 
 	if userRole != models.RoleAdmin {
+		//alur surat masuk
 		if userRole == models.RoleADC && letter.Status == models.StatusBelumDisposisi && oldStatus == models.StatusPerluVerifikasi {
 			letter.VerifiedByID = &claims.UserID
 		}
 		if userRole == models.RoleDirektur && letter.Status == models.StatusSudahDisposisi && oldStatus == models.StatusBelumDisposisi {
 			letter.DisposedByID = &claims.UserID
+		}
+
+		//alur surat keluar
+		if userRole == models.RoleDirektur && letter.Status == models.StatusDisetujui && oldStatus == models.StatusPerluPersetujuan {
+			letter.DisposedByID = &claims.UserID // Menggunakan DisposedByID untuk "penyetuju"
+		}
+		if userRole == models.RoleADC && letter.Status == models.StatusTerkirim && oldStatus == models.StatusDisetujui {
+			letter.VerifiedByID = &claims.UserID // Menggunakan VerifiedByID untuk "pengirim/pengarsip"
 		}
 	}
 
@@ -244,47 +253,117 @@ func validateWorkflowUpdate(role models.Role, letter *models.Letter, req *letter
 		newStatus = *req.Status
 	}
 
-	switch role {
-	//Rule Bagian Umum
-	case models.RoleBagianUmum:
-		if letter.Status != models.StatusDraft && newStatus == models.StatusDraft {
-		} else if letter.Status != models.StatusDraft {
-			return errors.New("bagian umum hanya dapat mengedit surat dengan status 'draft'")
-		}
+	// === 1. ALUR SURAT MASUK (ATAU INTERNAL) ===
+	if letter.JenisSurat == models.LetterMasuk || letter.JenisSurat == models.LetterInternal {
 
-		//Rule ADC
-	case models.RoleADC:
-		if letter.Status != models.StatusPerluVerifikasi {
-			return errors.New("ADC hanya dapat memproses surat dengan status 'perlu_disposisi'")
-		}
-
-		if newStatus != letter.Status && newStatus != models.StatusBelumDisposisi {
-			return errors.New("ADC hanya dapat mengubah status ke 'belum_disposisi' (verifikasi)")
-		}
-
-		if req.Disposisi != nil || req.TanggalDisposisi != nil || req.BidangTujuan != nil {
-			return errors.New("ADC tidak memiliki izin untuk mengisi data disposisi")
-		}
-		//rule direktur
-	case models.RoleDirektur:
-		if req.Pengirim != nil || req.NomorSurat != nil || req.NomorAgenda != nil ||
-			req.JenisSurat != nil || req.IsiSurat != nil ||
-			req.JudulSurat != nil || req.Kesimpulan != nil || req.FilePath != nil {
-			return errors.New("direktur tidak memiliki izin untuk mengubah konten utama surat, hanya disposisi")
-		}
-
-		if newStatus != letter.Status {
-			if newStatus != models.StatusSudahDisposisi {
-				return errors.New("direktur hanya dapat mengubah status ke 'sudah_disposisi'")
+		switch role {
+		//Rule Bagian Umum (Hanya bisa edit draft)
+		case models.RoleBagianUmum:
+			if letter.Status != models.StatusDraft {
+				return errors.New("bagian umum hanya dapat mengedit surat dengan status 'draft'")
 			}
+			// Bagian Umum boleh mengubah status dari 'draft' ke 'perlu_verifikasi'
+			if newStatus != models.StatusDraft && newStatus != models.StatusPerluVerifikasi {
+				return errors.New("bagian umum hanya dapat mengubah status ke 'perlu_verifikasi'")
+			}
+
+		//Rule ADC (Verifikator)
+		case models.RoleADC:
+			if letter.Status != models.StatusPerluVerifikasi {
+				// Perbaiki pesan error agar sesuai dengan status baru
+				return errors.New("ADC hanya dapat memproses surat masuk dengan status 'perlu_verifikasi'")
+			}
+
+			if newStatus != letter.Status && newStatus != models.StatusBelumDisposisi {
+				return errors.New("ADC hanya dapat mengubah status ke 'belum_disposisi' (verifikasi)")
+			}
+
+			// ADC boleh mengedit konten surat (untuk koreksi), tapi bukan data disposisi
+			if req.Disposisi != nil || req.TanggalDisposisi != nil || req.BidangTujuan != nil {
+				return errors.New("ADC tidak memiliki izin untuk mengisi data disposisi")
+			}
+
+		//Rule Direktur (Disposisi)
+		case models.RoleDirektur:
 			if letter.Status != models.StatusBelumDisposisi {
 				return errors.New("surat ini belum siap untuk disposisi oleh Direktur (status saat ini: " + string(letter.Status) + ")")
 			}
+
+			// Direktur tidak boleh mengubah konten surat, hanya data disposisi
+			if req.Pengirim != nil || req.NomorSurat != nil || req.NomorAgenda != nil ||
+				req.JenisSurat != nil || req.IsiSurat != nil ||
+				req.JudulSurat != nil || req.Kesimpulan != nil || req.FilePath != nil {
+				return errors.New("direktur tidak memiliki izin untuk mengubah konten utama surat, hanya disposisi")
+			}
+
+			if newStatus != letter.Status && newStatus != models.StatusSudahDisposisi {
+				return errors.New("direktur hanya dapat mengubah status ke 'sudah_disposisi'")
+			}
+
+		default:
+			return errors.New("role Anda tidak memiliki izin untuk memperbarui surat masuk")
 		}
 
-	default:
-		return errors.New("role Anda tidak memiliki izin untuk memperbarui surat")
+		return nil
 	}
 
-	return nil
+	// === 2. ALUR SURAT KELUAR ===
+	if letter.JenisSurat == models.LetterKeluar {
+
+		switch role {
+		//Rule ADC (Pembuat & Pengirim)
+		case models.RoleADC:
+			// 1. Saat masih Draft atau Revisi
+			if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
+				if newStatus == letter.Status {
+					return nil // Boleh mengedit field jika status tidak berubah
+				}
+				if newStatus == models.StatusPerluPersetujuan {
+					return nil // Boleh mengajukan/mengajukan ulang
+				}
+				return errors.New("ADC hanya dapat mengajukan 'draft' atau 'perlu_revisi' untuk persetujuan")
+			}
+
+			// 2. Saat sudah Disetujui
+			if letter.Status == models.StatusDisetujui {
+				if newStatus == models.StatusTerkirim {
+					return nil // Boleh memfinalisasi (mengirim/mengarsipkan)
+				}
+				return errors.New("surat yang disetujui hanya dapat diubah statusnya menjadi 'terkirim' oleh ADC")
+			}
+
+			// 3. Status lain (Perlu Persetujuan, Terkirim) tidak boleh diedit ADC
+			return errors.New("ADC tidak dapat mengubah surat keluar pada status ini (" + string(letter.Status) + ")")
+
+		//Rule Direktur (Penyetuju)
+		case models.RoleDirektur:
+			if letter.Status != models.StatusPerluPersetujuan {
+				return errors.New("direktur hanya dapat memproses surat keluar dengan status 'perlu_persetujuan'")
+			}
+
+			// Direktur tidak boleh mengubah konten surat
+			if req.Pengirim != nil || req.NomorSurat != nil || req.NomorAgenda != nil ||
+				req.JenisSurat != nil || req.IsiSurat != nil ||
+				req.JudulSurat != nil || req.Kesimpulan != nil || req.FilePath != nil {
+				return errors.New("direktur tidak memiliki izin untuk mengubah konten utama surat, hanya status persetujuan")
+			}
+
+			// Direktur hanya boleh menyetujui atau meminta revisi
+			if newStatus != models.StatusDisetujui && newStatus != models.StatusPerluRevisi {
+				return errors.New("direktur hanya dapat mengubah status ke 'disetujui' atau 'perlu_revisi'")
+			}
+
+		//Rule Bagian Umum (Tidak terlibat)
+		case models.RoleBagianUmum:
+			return errors.New("bagian umum tidak memiliki izin untuk mengelola surat keluar")
+
+		default:
+			return errors.New("role Anda tidak memiliki izin untuk memperbarui surat keluar")
+		}
+
+		return nil
+	}
+
+	// Fallback jika JenisSurat tidak terdefinisi (seharusnya tidak terjadi)
+	return errors.New("jenis surat tidak valid")
 }
