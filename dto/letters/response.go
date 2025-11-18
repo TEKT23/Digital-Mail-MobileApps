@@ -24,21 +24,37 @@ type LetterResponse struct {
 	FilePath         string              `json:"file_path"`
 	Status           models.LetterStatus `json:"status"`
 	CreatedByID      *uint               `json:"created_by_id"`
-	CreatedBy        *models.User        `json:"created_by"`
+	CreatedBy        *LetterUserResponse `json:"created_by"`
 	VerifiedByID     *uint               `json:"verified_by_id"`
-	VerifiedBy       *models.User        `json:"verified_by"`
+	VerifiedBy       *LetterUserResponse `json:"verified_by"`
 	DisposedByID     *uint               `json:"disposed_by_id"`
-	DisposedBy       *models.User        `json:"disposed_by"`
+	DisposedBy       *LetterUserResponse `json:"disposed_by"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
+type LetterUserResponse struct {
+	ID       uint   `json:"id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Jabatan  string `json:"jabatan"`
+}
+
+func toLetterUserResponse(user *models.User) *LetterUserResponse {
+	if user == nil {
+		return nil
+	}
+	return &LetterUserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Role:     string(user.Role),
+		Jabatan:  user.Jabatan,
+	}
+}
+
 func NewLetterResponse(letter *models.Letter) LetterResponse {
 	if letter == nil {
-		return LetterResponse{
-			IDSurat:  letter.ID,
-			Pengirim: letter.Pengirim,
-		}
+		return LetterResponse{}
 	}
 
 	return LetterResponse{
@@ -59,11 +75,11 @@ func NewLetterResponse(letter *models.Letter) LetterResponse {
 		FilePath:         letter.FilePath,
 		Status:           letter.Status,
 		CreatedByID:      letter.CreatedByID,
-		CreatedBy:        letter.CreatedBy,
+		CreatedBy:        toLetterUserResponse(letter.CreatedBy),
 		VerifiedByID:     letter.VerifiedByID,
-		VerifiedBy:       letter.VerifiedBy,
+		VerifiedBy:       toLetterUserResponse(letter.VerifiedBy),
 		DisposedByID:     letter.DisposedByID,
-		DisposedBy:       letter.DisposedBy,
+		DisposedBy:       toLetterUserResponse(letter.DisposedBy),
 		CreatedAt:        letter.CreatedAt,
 		UpdatedAt:        letter.UpdatedAt,
 	}

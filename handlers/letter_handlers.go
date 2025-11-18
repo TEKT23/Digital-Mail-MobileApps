@@ -81,7 +81,13 @@ func CreateLetter(c *fiber.Ctx) error {
 func GetLetterByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var letter models.Letter
-	if err := config.DB.First(&letter, "id = ?", id).Error; err != nil {
+
+	if err := config.DB.
+		Preload("CreatedBy").
+		Preload("VerifiedBy").
+		Preload("DisposedBy").
+		First(&letter, "id = ?", id).Error; err != nil {
+
 		if err == gorm.ErrRecordNotFound {
 			return utils.ErrorResponse(c, fiber.StatusNotFound, "letter not found", nil)
 		}
@@ -117,7 +123,14 @@ func ListLetters(c *fiber.Ctx) error {
 	}
 
 	var letters []models.Letter
-	if err := config.DB.Order("id DESC").Limit(limit).Offset(offset).Find(&letters).Error; err != nil {
+	if err := config.DB.
+		Preload("CreatedBy").
+		Preload("VerifiedBy").
+		Preload("DisposedBy").
+		Order("id DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&letters).Error; err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to retrieve letters", err.Error())
 	}
 
