@@ -73,6 +73,12 @@ func Register(app *fiber.App) {
 		handlers.DeleteLetter,
 	)
 
+	//Settings
+	settings := api.Group("/settings")
+	settings.Get("/profile", handlers.GetMyProfile)
+	settings.Put("/profile", handlers.UpdateMyProfile)
+	settings.Put("/change-password", handlers.ChangePassword)
+
 	//admin zone
 	admin := api.Group("/admin",
 		middleware.RequireAuth(),
