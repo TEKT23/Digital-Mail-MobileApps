@@ -40,15 +40,15 @@ type Letter struct {
 	NomorSurat       string     `gorm:"type:varchar(100);index"`
 	NomorAgenda      string     `gorm:"type:varchar(100);index"`
 	Disposisi        string     `gorm:"type:text"`
-	TanggalDisposisi *time.Time `gorm:"type:date"`
+	TanggalDisposisi *time.Time `gorm:"type:datetime"`
 	BidangTujuan     string     `gorm:"type:varchar(150);index"`
 
 	JenisSurat LetterType `gorm:"type:ENUM('masuk','keluar','internal');not null;index"`
 	Prioritas  Priority   `gorm:"type:ENUM('biasa','segera','penting');default:'biasa';not null;index"`
 
 	IsiSurat     string     `gorm:"type:longtext"`
-	TanggalSurat *time.Time `gorm:"type:date"`
-	TanggalMasuk *time.Time `gorm:"type:date;index"`
+	TanggalSurat *time.Time `gorm:"type:datetime"`
+	TanggalMasuk *time.Time `gorm:"type:datetime;index"`
 	JudulSurat   string     `gorm:"type:varchar(255);index"`
 	Kesimpulan   string     `gorm:"type:text"`
 	FilePath     string     `gorm:"type:varchar(255)"`
