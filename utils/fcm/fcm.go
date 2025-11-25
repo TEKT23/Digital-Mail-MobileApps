@@ -112,6 +112,30 @@ func StartNotifierConsumer(ctx context.Context) {
 				case events.LetterCreated:
 					log.Printf("Event: Letter Created (ID: %d). No notification sent.", e.Letter.ID)
 
+					if e.Letter.Status == models.StatusPerluVerifikasi {
+						title := "Surat Masuk Baru"
+
+						data := map[string]string{
+							"letter_id": letterIDStr,
+							"action":    "new_letter",
+							"status":    string(e.Letter.Status),
+						}
+
+						bodyADC := fmt.Sprintf("Surat baru \"%s\" (No. %s) masuk dan perlu verifikasi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						topicADC := mapRoleToTopic(models.RoleADC)
+						if err := SendNotificationToTopic(sendCtx, topicADC, title, bodyADC, data); err != nil {
+							log.Printf("Error sending FCM to ADC: %v", err)
+						}
+
+						bodyDirektur := fmt.Sprintf("Surat masuk baru \"%s\" (No. %s) sedang diverifikasi ADC.", e.Letter.JudulSurat, e.Letter.NomorSurat)
+						topicDirektur := mapRoleToTopic(models.RoleDirektur)
+						if err := SendNotificationToTopic(sendCtx, topicDirektur, title, bodyDirektur, data); err != nil {
+							log.Printf("Error sending FCM to Direktur: %v", err)
+						}
+					} else {
+						log.Println("Letter created as Draft. Notification skipped.")
+					}
+
 				// kalau status surat berubah
 				case events.LetterStatusMoved:
 					log.Printf("Event: Letter Status Moved (ID: %d, New Status: %s)", e.Letter.ID, e.Letter.Status)
