@@ -36,7 +36,7 @@ type RegisterRequest struct {
 	LastName  string      `json:"last_name" binding:"omitempty,max=100"`
 	Email     string      `json:"email" binding:"required,email"`
 	Password  string      `json:"password" binding:"required,min=8"`
-	Role      models.Role `json:"role" binding:"required,oneof=bagian_umum adc direktur admin"`
+	Role      models.Role `json:"role" binding:"required"`
 	Jabatan   string      `json:"jabatan" binding:"omitempty,max=150"`
 	Atribut   string      `json:"atribut" binding:"omitempty"`
 }

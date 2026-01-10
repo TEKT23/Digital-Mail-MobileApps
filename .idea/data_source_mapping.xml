@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/database/migrations/001_refactor_roles_and_schema.down.sql" value="0bdea30c-bf19-4bfe-983a-c9d0db18fc46" />
+    <file url="file://$PROJECT_DIR$/database/migrations/001_refactor_roles_and_schema.up.sql" value="0bdea30c-bf19-4bfe-983a-c9d0db18fc46" />
+    <file url="file://$PROJECT_DIR$/database/migrations/002_update_surat_status.up.sql" value="0bdea30c-bf19-4bfe-983a-c9d0db18fc46" />
+    <file url="file://$PROJECT_DIR$/database/migrations/003_set_default_scope.up.sql" value="0bdea30c-bf19-4bfe-983a-c9d0db18fc46" />
+  </component>
+</project>

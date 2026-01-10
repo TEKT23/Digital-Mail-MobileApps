@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,15 +24,19 @@ const (
 )
 
 const (
-	StatusDraft           LetterStatus = "draft"
-	StatusPerluVerifikasi LetterStatus = "perlu_verifikasi"
-	StatusBelumDisposisi  LetterStatus = "belum_disposisi"
-	StatusSudahDisposisi  LetterStatus = "sudah_disposisi"
-
+	StatusDraft            LetterStatus = "draft"
+	StatusPerluVerifikasi  LetterStatus = "perlu_verifikasi"
+	StatusBelumDisposisi   LetterStatus = "belum_disposisi"
+	StatusSudahDisposisi   LetterStatus = "sudah_disposisi"
 	StatusPerluPersetujuan LetterStatus = "perlu_persetujuan"
 	StatusPerluRevisi      LetterStatus = "perlu_revisi"
 	StatusDisetujui        LetterStatus = "disetujui"
-	StatusTerkirim         LetterStatus = "terkirim"
+	StatusDiarsipkan       LetterStatus = "diarsipkan"
+)
+
+const (
+	ScopeInternal  = "Internal"
+	ScopeEksternal = "Eksternal"
 )
 
 type Letter struct {
@@ -43,8 +48,13 @@ type Letter struct {
 	TanggalDisposisi *time.Time `gorm:"type:datetime"`
 	BidangTujuan     string     `gorm:"type:varchar(150);index"`
 
-	JenisSurat LetterType `gorm:"type:ENUM('masuk','keluar','internal');not null;index"`
-	Prioritas  Priority   `gorm:"type:ENUM('biasa','segera','penting');default:'biasa';not null;index"`
+	JenisSurat LetterType `gorm:"type:enum('masuk','keluar','internal');not null;index"`
+	Prioritas  Priority   `gorm:"type:enum('biasa','segera','penting');default:'biasa';not null;index"`
+
+	// NEW FIELDS
+	Scope              string `json:"scope" gorm:"type:enum('Internal','Eksternal');not null;index"`
+	AssignedVerifierID *uint  `json:"assigned_verifier_id" gorm:"index"`
+	AssignedVerifier   *User  `json:"assigned_verifier,omitempty" gorm:"foreignKey:AssignedVerifierID"`
 
 	IsiSurat     string     `gorm:"type:longtext"`
 	TanggalSurat *time.Time `gorm:"type:datetime"`
@@ -53,17 +63,47 @@ type Letter struct {
 	Kesimpulan   string     `gorm:"type:text"`
 	FilePath     string     `gorm:"type:varchar(255)"`
 
-	Status LetterStatus `gorm:"type:ENUM('draft','perlu_verifikasi','belum_disposisi', 'sudah_disposisi','perlu_persetujuan','perlu_revisi' , 'disetujui','terkirim');default:'draft';not null;index"`
+	Status LetterStatus `gorm:"type:enum('draft','perlu_verifikasi','belum_disposisi','sudah_disposisi','perlu_persetujuan','perlu_revisi','disetujui','diarsipkan');default:'draft';not null;index"`
 
-	//relation
-	CreatedByID  *uint `gorm:"index"` // Bagian Umum
+	CreatedByID  uint  `gorm:"not null;index"`
 	CreatedBy    *User `gorm:"foreignkey:CreatedByID"`
-	VerifiedByID *uint `gorm:"index"` // ADC
+	VerifiedByID *uint `gorm:"index"`
 	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID"`
-	DisposedByID *uint `gorm:"index"` // Direktur
+	DisposedByID *uint `gorm:"index"`
 	DisposedBy   *User `gorm:"foreignkey:DisposedByID"`
 }
 
-func (Letter) TableName() string {
-	return "surat"
+func (Letter) TableName() string { return "surat" }
+
+func (l *Letter) IsSuratKeluar() bool { return l.JenisSurat == LetterKeluar }
+func (l *Letter) IsSuratMasuk() bool  { return l.JenisSurat == LetterMasuk }
+
+func (l *Letter) CanTransitionTo(newStatus LetterStatus) bool {
+	validTransitions := map[LetterStatus][]LetterStatus{
+		StatusDraft:            {StatusPerluVerifikasi, StatusBelumDisposisi},
+		StatusPerluVerifikasi:  {StatusPerluPersetujuan, StatusPerluRevisi},
+		StatusPerluPersetujuan: {StatusDisetujui, StatusPerluRevisi},
+		StatusPerluRevisi:      {StatusPerluVerifikasi, StatusPerluPersetujuan, StatusDraft}, // Revisi boleh balik ke Draft
+		StatusDisetujui:        {StatusDiarsipkan},
+		StatusBelumDisposisi:   {StatusSudahDisposisi},
+		StatusSudahDisposisi:   {StatusDiarsipkan},
+	}
+
+	allowed, exists := validTransitions[l.Status]
+	if !exists {
+		return false
+	}
+	for _, s := range allowed {
+		if s == newStatus {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *Letter) Validate() error {
+	if l.IsSuratKeluar() && l.AssignedVerifierID == nil {
+		return errors.New("surat keluar harus memiliki assigned verifier")
+	}
+	return nil
 }

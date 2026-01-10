@@ -43,7 +43,7 @@ func main() {
 		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 	}))
 
-	routes.Register(app)
+	routes.SetupRoutes(app, config.DB)
 
 	go func() {
 		log.Println("🚀 API running on :8080")

@@ -81,7 +81,14 @@ func (r *AdminUserUpdateRequest) Validate() map[string]string {
 
 func isValidRole(role models.Role) bool {
 	switch role {
-	case models.RoleBagianUmum, models.RoleADC, models.RoleDirektur, models.RoleAdmin:
+	// Daftar Role Lengkap (Baru)
+	case models.RoleAdmin,
+		models.RoleDirektur,
+		models.RoleStafProgram,
+		models.RoleStafLembaga,
+		models.RoleManajerKPP,
+		models.RoleManajerPemas,
+		models.RoleManajerPKL:
 		return true
 	default:
 		return false

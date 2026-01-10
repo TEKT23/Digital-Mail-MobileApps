@@ -1,9 +1,8 @@
 package letters
 
 import (
-	"time"
-
 	"TugasAkhir/models"
+	"time"
 )
 
 type LetterResponse struct {
@@ -23,14 +22,17 @@ type LetterResponse struct {
 	Kesimpulan       string              `json:"kesimpulan"`
 	FilePath         string              `json:"file_path"`
 	Status           models.LetterStatus `json:"status"`
-	CreatedByID      *uint               `json:"created_by_id"`
-	CreatedBy        *LetterUserResponse `json:"created_by"`
-	VerifiedByID     *uint               `json:"verified_by_id"`
-	VerifiedBy       *LetterUserResponse `json:"verified_by"`
-	DisposedByID     *uint               `json:"disposed_by_id"`
-	DisposedBy       *LetterUserResponse `json:"disposed_by"`
-	CreatedAt        time.Time           `json:"created_at"`
-	UpdatedAt        time.Time           `json:"updated_at"`
+
+	// UPDATE: Ubah jadi uint (bukan pointer) sesuai Models
+	CreatedByID uint                `json:"created_by_id"`
+	CreatedBy   *LetterUserResponse `json:"created_by"`
+
+	VerifiedByID *uint               `json:"verified_by_id"`
+	VerifiedBy   *LetterUserResponse `json:"verified_by"`
+	DisposedByID *uint               `json:"disposed_by_id"`
+	DisposedBy   *LetterUserResponse `json:"disposed_by"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
 }
 
 type LetterUserResponse struct {
@@ -74,13 +76,16 @@ func NewLetterResponse(letter *models.Letter) LetterResponse {
 		Kesimpulan:       letter.Kesimpulan,
 		FilePath:         letter.FilePath,
 		Status:           letter.Status,
-		CreatedByID:      letter.CreatedByID,
-		CreatedBy:        toLetterUserResponse(letter.CreatedBy),
-		VerifiedByID:     letter.VerifiedByID,
-		VerifiedBy:       toLetterUserResponse(letter.VerifiedBy),
-		DisposedByID:     letter.DisposedByID,
-		DisposedBy:       toLetterUserResponse(letter.DisposedBy),
-		CreatedAt:        letter.CreatedAt,
-		UpdatedAt:        letter.UpdatedAt,
+
+		// Assignment langsung (uint ke uint)
+		CreatedByID: letter.CreatedByID,
+		CreatedBy:   toLetterUserResponse(letter.CreatedBy),
+
+		VerifiedByID: letter.VerifiedByID,
+		VerifiedBy:   toLetterUserResponse(letter.VerifiedBy),
+		DisposedByID: letter.DisposedByID,
+		DisposedBy:   toLetterUserResponse(letter.DisposedBy),
+		CreatedAt:    letter.CreatedAt,
+		UpdatedAt:    letter.UpdatedAt,
 	}
 }

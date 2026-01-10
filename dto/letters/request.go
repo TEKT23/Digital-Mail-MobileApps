@@ -23,9 +23,10 @@ type CreateLetterRequest struct {
 	Kesimpulan       string              `json:"kesimpulan"`
 	FilePath         string              `json:"file_path"`
 	Status           models.LetterStatus `json:"status"`
-	CreatedByID      *uint               `json:"created_by_id"`
-	VerifiedByID     *uint               `json:"verified_by_id"`
-	DisposedByID     *uint               `json:"disposed_by_id"`
+	// CreatedByID tetap pointer di request agar opsional (bisa nil) saat parsing JSON
+	CreatedByID  *uint `json:"created_by_id"`
+	VerifiedByID *uint `json:"verified_by_id"`
+	DisposedByID *uint `json:"disposed_by_id"`
 }
 
 type UpdateLetterRequest struct {
@@ -68,7 +69,7 @@ func (r *CreateLetterRequest) Validate() map[string]string {
 		errors["prioritas"] = "prioritas must be biasa, segera, or penting"
 	}
 	if r.Status != "" && !isValidLetterStatus(r.Status) {
-		errors["status"] = "status must be draft, perlu_disposisi, belum_disposisi, or sudah_disposisi"
+		errors["status"] = "status invalid"
 	}
 
 	return errors
@@ -84,7 +85,7 @@ func (r *UpdateLetterRequest) Validate() map[string]string {
 		errors["prioritas"] = "prioritas must be biasa, segera, or penting"
 	}
 	if r.Status != nil && !isValidLetterStatus(*r.Status) {
-		errors["status"] = "status must be draft, perlu_disposisi, belum_disposisi, or sudah_disposisi"
+		errors["status"] = "status invalid"
 	}
 
 	return errors
@@ -110,8 +111,15 @@ func isValidPriority(p models.Priority) bool {
 
 func isValidLetterStatus(s models.LetterStatus) bool {
 	switch s {
-	case models.StatusDraft, models.StatusPerluVerifikasi, models.StatusBelumDisposisi, models.StatusSudahDisposisi,
-		models.StatusPerluPersetujuan, models.StatusPerluRevisi, models.StatusDisetujui, models.StatusTerkirim:
+	// UPDATE: Sesuaikan dengan status baru di models/letters.entity.go
+	case models.StatusDraft,
+		models.StatusPerluVerifikasi,
+		models.StatusBelumDisposisi,
+		models.StatusSudahDisposisi,
+		models.StatusPerluPersetujuan,
+		models.StatusPerluRevisi,
+		models.StatusDisetujui,
+		models.StatusDiarsipkan: // Ganti StatusTerkirim jadi StatusDiarsipkan
 		return true
 	default:
 		return false

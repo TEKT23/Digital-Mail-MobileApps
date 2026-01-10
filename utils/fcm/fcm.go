@@ -1,22 +1,20 @@
 package fcm
 
 import (
+	"TugasAkhir/models"
+	"TugasAkhir/utils/events"
 	"context"
 	"fmt"
 	"log"
 	"strconv"
 	"time"
 
-	"TugasAkhir/models" //
-	"TugasAkhir/utils/events"
-
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
 )
 
-const (
-	FCMTopicPrefix = "digitalmail_role_"
-)
+// Prefix untuk nama topic di Firebase
+const FCMTopicPrefix = "topic_"
 
 var (
 	fcmClient *messaging.Client
@@ -24,16 +22,14 @@ var (
 
 func init() {
 	log.Println("Initializing Firebase Admin SDK...")
-
 	ctx := context.Background()
+	config := &firebase.Config{ProjectID: "digimail-mobile"}
 
-	config := &firebase.Config{
-		ProjectID: "digimail-mobile",
-	}
 	app, err := firebase.NewApp(ctx, config)
 	if err != nil {
 		log.Fatalf("error initializing Firebase app: %v\n", err)
 	}
+
 	client, err := app.Messaging(ctx)
 	if err != nil {
 		log.Fatalf("error getting Firebase Messaging client: %v\n", err)
@@ -43,18 +39,22 @@ func init() {
 	log.Println("✅ Firebase Admin SDK initialized successfully.")
 }
 
-// mapRoleToTopic mengembalikan nama topik FCM untuk role tertentu
+// ---------------------------------------------------------
+// HELPER: Map Role ke Topic (INI YANG SEBELUMNYA ERROR)
+// ---------------------------------------------------------
+// Fungsi ini sekarang DIPANGGIL di dalam StartNotifierConsumer
+// untuk menentukan tujuan notifikasi secara dinamis.
 func mapRoleToTopic(role models.Role) string {
+	// Contoh: role "direktur" -> "topic_direktur"
 	return FCMTopicPrefix + string(role)
 }
 
-// SendNotificationToTopic mengirimkan notifikasi ke topik FCM tertentu
+// Helper kirim notifikasi
 func SendNotificationToTopic(ctx context.Context, topic, title, body string, data map[string]string) error {
 	if fcmClient == nil {
 		return fmt.Errorf("FCM client not initialized")
 	}
 
-	// Membuat payload pesan
 	msg := &messaging.Message{
 		Topic: topic,
 		Notification: &messaging.Notification{
@@ -62,176 +62,132 @@ func SendNotificationToTopic(ctx context.Context, topic, title, body string, dat
 			Body:  body,
 		},
 		Data: data,
-		// Opsi Android untuk prioritas dan channel (jika diperlukan)
 		Android: &messaging.AndroidConfig{
-			Priority: "high",
-			Notification: &messaging.AndroidNotification{
-				ChannelID: "default_channel", // Pastikan channel ini ada di aplikasi Android
-			},
-		},
-		// Opsi APNS (iOS)
-		APNS: &messaging.APNSConfig{
-			Payload: &messaging.APNSPayload{
-				Aps: &messaging.Aps{
-					Sound: "default",
-				},
-			},
+			Priority:     "high",
+			Notification: &messaging.AndroidNotification{ChannelID: "default_channel"},
 		},
 	}
 
-	// Mengirim pesan
-	response, err := fcmClient.Send(ctx, msg)
-	if err != nil {
-		log.Printf("Error sending FCM to topic %s: %v", topic, err)
-		return err
-	}
-
-	log.Printf("Successfully sent message to topic %s: %s", topic, response)
-	return nil
+	_, err := fcmClient.Send(ctx, msg)
+	return err
 }
 
-// StartNotifierConsumer adalah goroutine yang mendengarkan event bus
 func StartNotifierConsumer(ctx context.Context) {
 	log.Println("✅ FCM Notifier Consumer started")
 
 	for {
 		select {
-		case event := <-events.LetterEventBus:
-			// Proses setiap event di goroutine baru agar tidak memblokir consumer
-			go func(e events.LetterEvent) {
+		case <-ctx.Done():
+			return
+		case e := <-events.LetterEventBus:
 
-				// Buat context dengan timeout untuk operasi pengiriman
+			// Goroutine agar tidak blocking
+			go func(event events.LetterEvent) {
 				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 
-				letterIDStr := strconv.FormatUint(uint64(e.Letter.ID), 10)
+				// Data standar untuk payload notifikasi (dikirim ke HP)
+				data := map[string]string{
+					"letter_id": strconv.FormatUint(uint64(event.Letter.ID), 10),
+					"status":    string(event.Letter.Status),
+					"type":      string(event.Letter.JenisSurat),
+				}
 
-				switch e.Type {
+				// === LOGIC PENGIRIMAN NOTIFIKASI ===
 
-				// surat baru dibuat
+				switch event.Type {
+
+				// KASUS 1: Surat Baru Dibuat
 				case events.LetterCreated:
-					log.Printf("Event: Letter Created (ID: %d). No notification sent.", e.Letter.ID)
+					if event.Letter.IsSuratMasuk() {
+						// Surat Masuk -> Kirim ke DIREKTUR
+						// PENGGUNAAN mapRoleToTopic DI SINI:
+						topic := mapRoleToTopic(models.RoleDirektur)
 
-					if e.Letter.Status == models.StatusPerluVerifikasi {
 						title := "Surat Masuk Baru"
+						body := fmt.Sprintf("Surat dari %s menunggu disposisi Anda.", event.Letter.Pengirim)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
 
-						data := map[string]string{
-							"letter_id": letterIDStr,
-							"action":    "new_letter",
-							"status":    string(e.Letter.Status),
-						}
-
-						bodyADC := fmt.Sprintf("Surat baru \"%s\" (No. %s) masuk dan perlu verifikasi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-						topicADC := mapRoleToTopic(models.RoleADC)
-						if err := SendNotificationToTopic(sendCtx, topicADC, title, bodyADC, data); err != nil {
-							log.Printf("Error sending FCM to ADC: %v", err)
-						}
-
-						bodyDirektur := fmt.Sprintf("Surat masuk baru \"%s\" (No. %s) sedang diverifikasi ADC.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-						topicDirektur := mapRoleToTopic(models.RoleDirektur)
-						if err := SendNotificationToTopic(sendCtx, topicDirektur, title, bodyDirektur, data); err != nil {
-							log.Printf("Error sending FCM to Direktur: %v", err)
-						}
 					} else {
-						log.Println("Letter created as Draft. Notification skipped.")
-					}
-
-				// kalau status surat berubah
-				case events.LetterStatusMoved:
-					log.Printf("Event: Letter Status Moved (ID: %d, New Status: %s)", e.Letter.ID, e.Letter.Status)
-
-					var targetRole models.Role
-					var title, body string
-
-					//
-					switch e.Letter.Status {
-
-					// Dari Draft -> Perlu Disposisi (Target: ADC)
-					case models.StatusPerluVerifikasi: // <-- Nama status baru
-						title = "Surat Perlu Verifikasi"
-						data := map[string]string{
-							"letter_id": letterIDStr,
-							"action":    "status_change",
-							"status":    string(e.Letter.Status),
+						// Surat Keluar -> Kirim ke MANAJER (Sesuai Scope)
+						var targetRole models.Role
+						if event.Letter.Scope == models.ScopeInternal {
+							targetRole = models.RoleManajerPKL
+						} else {
+							// Eksternal: Kirim ke KPP & Pemas (Broadcast sementara)
+							t1 := mapRoleToTopic(models.RoleManajerKPP)
+							t2 := mapRoleToTopic(models.RoleManajerPemas)
+							msg := fmt.Sprintf("Surat keluar #%s menunggu verifikasi.", event.Letter.NomorSurat)
+							SendNotificationToTopic(sendCtx, t1, "Verifikasi Surat", msg, data)
+							SendNotificationToTopic(sendCtx, t2, "Verifikasi Surat", msg, data)
+							return
 						}
 
-						bodyADC := fmt.Sprintf("Surat \"%s\" (No. %s) memerlukan verifikasi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-						topicADC := mapRoleToTopic(models.RoleADC)
-						if err := SendNotificationToTopic(sendCtx, topicADC, title, bodyADC, data); err != nil {
-							log.Printf("Error sending FCM to ADC: %v", err)
-						}
-
-						bodyDirektur := fmt.Sprintf("Surat masuk \"%s\" (No. %s) sedang diverifikasi ADC.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-						topicDirektur := mapRoleToTopic(models.RoleDirektur)
-						if err := SendNotificationToTopic(sendCtx, topicDirektur, title, bodyDirektur, data); err != nil {
-							log.Printf("Error sending FCM to Direktur: %v", err)
-						}
-
-						return
-
-					// Dari Perlu Disposisi -> Belum Disposisi (Target: Direktur)
-					case models.StatusBelumDisposisi:
-						targetRole = models.RoleDirektur //
-						title = "Surat Siap Disposisi"
-						body = fmt.Sprintf("Surat \"%s\" (No. %s) siap untuk disposisi Anda.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-
-					case models.StatusSudahDisposisi:
-						title = "Surat Selesai Disposisi"
-						body = fmt.Sprintf("Surat \"%s\" (No. %s) telah selesai didisposisi.", e.Letter.JudulSurat, e.Letter.NomorSurat)
-						data := map[string]string{
-							"letter_id": letterIDStr,
-							"action":    "status_change",
-							"status":    string(e.Letter.Status),
-						}
-
-						// notif ke adc
-						topicADC := mapRoleToTopic(models.RoleADC)
-						if err := SendNotificationToTopic(sendCtx, topicADC, title, body, data); err != nil {
-							log.Printf("Error sending FCM to ADC: %v", err)
-						}
-
-						// notif ke bagian umum
-						topicBU := mapRoleToTopic(models.RoleBagianUmum)
-						if err := SendNotificationToTopic(sendCtx, topicBU, title, body, data); err != nil {
-							log.Printf("Error sending FCM to Bagian Umum: %v", err)
-						}
-
-					case models.StatusPerluPersetujuan:
-						targetRole = models.RoleDirektur //
-						title = "Surat Keluar Perlu Persetujuan"
-						body = fmt.Sprintf("Surat keluar \"%s\" memerlukan persetujuan Anda.", e.Letter.JudulSurat)
-
-					case models.StatusPerluRevisi:
-						targetRole = models.RoleADC //
-						title = "Surat Keluar Perlu Revisi"
-						body = fmt.Sprintf("Surat keluar \"%s\" perlu revisi dari Direktur.", e.Letter.JudulSurat)
-
-					case models.StatusDisetujui:
-						targetRole = models.RoleADC //
-						title = "Surat Keluar Disetujui"
-						body = fmt.Sprintf("Surat keluar \"%s\" telah disetujui.", e.Letter.JudulSurat)
-
-					default:
-						return
-					}
-
-					if targetRole != "" {
+						// Internal -> Kirim ke Manajer PKL
 						topic := mapRoleToTopic(targetRole)
-						data := map[string]string{
-							"letter_id": letterIDStr,
-							"action":    "status_change",
-							"status":    string(e.Letter.Status),
+						title := "Permintaan Verifikasi"
+						body := fmt.Sprintf("Surat keluar #%s menunggu verifikasi Anda.", event.Letter.NomorSurat)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
+					}
+
+				// KASUS 2: Status Berubah (Disetujui, Revisi, Disposisi, dll)
+				case events.LetterStatusMoved:
+
+					// A. Jika Status jadi 'Perlu Persetujuan' -> Ke DIREKTUR
+					if event.Letter.Status == models.StatusPerluPersetujuan {
+						topic := mapRoleToTopic(models.RoleDirektur)
+						title := "Persetujuan Diperlukan"
+						body := fmt.Sprintf("Surat #%s menunggu tanda tangan Anda.", event.Letter.NomorSurat)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
+					}
+
+					// B. Jika Status jadi 'Sudah Disposisi' -> Balik ke STAF
+					if event.Letter.Status == models.StatusSudahDisposisi {
+						// Tentukan staf mana yg dapat notif
+						var targetRole models.Role
+						if event.Letter.Scope == models.ScopeInternal {
+							targetRole = models.RoleStafLembaga
+						} else {
+							targetRole = models.RoleStafProgram
 						}
-						if err := SendNotificationToTopic(sendCtx, topic, title, body, data); err != nil {
-							log.Printf("Error sending FCM to %s: %v", targetRole, err)
+
+						topic := mapRoleToTopic(targetRole)
+						title := "Disposisi Turun"
+						body := fmt.Sprintf("Surat #%s telah didisposisi Direktur.", event.Letter.NomorSurat)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
+					}
+
+					// C. Jika Status jadi 'Perlu Revisi' -> Balik ke STAF
+					if event.Letter.Status == models.StatusPerluRevisi {
+						var targetRole models.Role
+						if event.Letter.Scope == models.ScopeInternal {
+							targetRole = models.RoleStafLembaga
+						} else {
+							targetRole = models.RoleStafProgram
 						}
+
+						topic := mapRoleToTopic(targetRole)
+						title := "Revisi Diperlukan"
+						body := fmt.Sprintf("Surat #%s dikembalikan untuk revisi.", event.Letter.NomorSurat)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
+					}
+
+					// D. Jika Status jadi 'Disetujui' -> Balik ke STAF (Siap Arsip)
+					if event.Letter.Status == models.StatusDisetujui {
+						var targetRole models.Role
+						if event.Letter.Scope == models.ScopeInternal {
+							targetRole = models.RoleStafLembaga
+						} else {
+							targetRole = models.RoleStafProgram
+						}
+
+						topic := mapRoleToTopic(targetRole)
+						title := "Surat Disetujui"
+						body := fmt.Sprintf("Surat #%s telah disetujui Direktur.", event.Letter.NomorSurat)
+						SendNotificationToTopic(sendCtx, topic, title, body, data)
 					}
 				}
-			}(event)
-
-		case <-ctx.Done():
-			log.Println("FCM Notifier Consumer stopped.")
-			return
+			}(e)
 		}
 	}
 }

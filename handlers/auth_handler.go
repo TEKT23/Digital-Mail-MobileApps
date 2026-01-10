@@ -22,6 +22,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Login - Tetap sama
 func Login(c *fiber.Ctx) error {
 	var req dto.LoginRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -76,6 +77,7 @@ func Login(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.StatusOK, "login successful", resp)
 }
 
+// Register - Update Validasi Role
 func Register(c *fiber.Ctx) error {
 	var req dto.RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -102,6 +104,8 @@ func Register(c *fiber.Ctx) error {
 	if req.Password == "" || len(req.Password) < 8 {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
 	}
+
+	// Validasi Role Baru
 	if !isValidRole(req.Role) {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid role provided", nil)
 	}
@@ -137,6 +141,7 @@ func Register(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.StatusCreated, "registration successful", resp)
 }
 
+// RefreshToken - Tetap sama
 func RefreshToken(c *fiber.Ctx) error {
 	var req dto.RefreshTokenRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -233,6 +238,7 @@ func RefreshToken(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.StatusOK, "token refreshed successfully", resp)
 }
 
+// RequestPasswordReset - Tetap sama
 func RequestPasswordReset(c *fiber.Ctx) error {
 	var req dto.PasswordResetRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -290,6 +296,7 @@ func RequestPasswordReset(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.StatusOK, "if the email exists, a reset link has been sent", nil)
 }
 
+// ResetPassword - Tetap sama
 func ResetPassword(c *fiber.Ctx) error {
 	var req dto.PasswordResetSubmission
 	if err := c.BodyParser(&req); err != nil {
@@ -356,6 +363,7 @@ func ResetPassword(c *fiber.Ctx) error {
 	return utils.SuccessResponse(c, fiber.StatusOK, "password has been reset successfully", nil)
 }
 
+// Logout - Tetap sama
 func Logout(c *fiber.Ctx) error {
 	var req dto.RefreshTokenRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -388,9 +396,16 @@ func toUserSummary(user models.User) dto.UserSummary {
 	}
 }
 
+// FIX: Helper isValidRole untuk Role Baru
 func isValidRole(role models.Role) bool {
 	switch role {
-	case models.RoleBagianUmum, models.RoleADC, models.RoleDirektur, models.RoleAdmin:
+	case models.RoleAdmin,
+		models.RoleDirektur,
+		models.RoleStafProgram,
+		models.RoleStafLembaga,
+		models.RoleManajerKPP,
+		models.RoleManajerPemas,
+		models.RoleManajerPKL:
 		return true
 	default:
 		return false

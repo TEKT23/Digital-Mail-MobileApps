@@ -1,9 +1,8 @@
 package letters
 
 import (
-	"strings"
-
 	"TugasAkhir/models"
+	"strings"
 )
 
 func (r *CreateLetterRequest) ToModel() models.Letter {
@@ -22,9 +21,14 @@ func (r *CreateLetterRequest) ToModel() models.Letter {
 		Kesimpulan:   strings.TrimSpace(r.Kesimpulan),
 		FilePath:     strings.TrimSpace(r.FilePath),
 		Status:       r.Status,
-		CreatedByID:  r.CreatedByID,
+		// Fix: CreatedByID di model sekarang uint (bukan pointer)
 		VerifiedByID: r.VerifiedByID,
 		DisposedByID: r.DisposedByID,
+	}
+
+	// Handle pointer to value conversion safely
+	if r.CreatedByID != nil {
+		letter.CreatedByID = *r.CreatedByID
 	}
 
 	if r.Prioritas == "" {
@@ -88,8 +92,9 @@ func ApplyUpdate(letter *models.Letter, req *UpdateLetterRequest) {
 	if req.Status != nil {
 		letter.Status = *req.Status
 	}
+	// Fix: Handle pointer conversion
 	if req.CreatedByID != nil {
-		letter.CreatedByID = req.CreatedByID
+		letter.CreatedByID = *req.CreatedByID
 	}
 	if req.VerifiedByID != nil {
 		letter.VerifiedByID = req.VerifiedByID
