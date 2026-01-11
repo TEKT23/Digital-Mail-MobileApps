@@ -105,8 +105,7 @@ func Register(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "password must be at least 8 characters", nil)
 	}
 
-	// Validasi Role Baru
-	if !isValidRole(req.Role) {
+	if !req.Role.IsValid() {
 		return utils.ErrorResponse(c, fiber.StatusBadRequest, "invalid role provided", nil)
 	}
 

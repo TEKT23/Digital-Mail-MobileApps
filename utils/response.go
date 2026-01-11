@@ -1,6 +1,10 @@
 package utils
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"strings"
+
+	"github.com/gofiber/fiber/v2"
+)
 
 type APIResponse struct {
 	Status  string      `json:"status"`
@@ -52,4 +56,12 @@ func PaginatedResponse(c *fiber.Ctx, statusCode int, message string, data interf
 	}
 
 	return SuccessResponse(c, statusCode, message, payload)
+}
+
+func IsDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") || strings.Contains(msg, "unique constraint")
 }

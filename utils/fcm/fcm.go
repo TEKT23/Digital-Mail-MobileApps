@@ -40,12 +40,11 @@ func init() {
 }
 
 // ---------------------------------------------------------
-// HELPER: Map Role ke Topic (INI YANG SEBELUMNYA ERROR)
+// HELPER: Map Role ke Topic (Routing Notifikasi)
 // ---------------------------------------------------------
-// Fungsi ini sekarang DIPANGGIL di dalam StartNotifierConsumer
-// untuk menentukan tujuan notifikasi secara dinamis.
 func mapRoleToTopic(role models.Role) string {
 	// Contoh: role "direktur" -> "topic_direktur"
+	// Contoh: role "manajer_kpp" -> "topic_manajer_kpp"
 	return FCMTopicPrefix + string(role)
 }
 
@@ -72,6 +71,9 @@ func SendNotificationToTopic(ctx context.Context, topic, title, body string, dat
 	return err
 }
 
+// ---------------------------------------------------------
+// MAIN CONSUMER (Logic Utama Notifikasi)
+// ---------------------------------------------------------
 func StartNotifierConsumer(ctx context.Context) {
 	log.Println("✅ FCM Notifier Consumer started")
 
@@ -93,7 +95,7 @@ func StartNotifierConsumer(ctx context.Context) {
 					"type":      string(event.Letter.JenisSurat),
 				}
 
-				// === LOGIC PENGIRIMAN NOTIFIKASI ===
+				// === LOGIC PENGIRIMAN NOTIFIKASI BARU ===
 
 				switch event.Type {
 
@@ -101,7 +103,6 @@ func StartNotifierConsumer(ctx context.Context) {
 				case events.LetterCreated:
 					if event.Letter.IsSuratMasuk() {
 						// Surat Masuk -> Kirim ke DIREKTUR
-						// PENGGUNAAN mapRoleToTopic DI SINI:
 						topic := mapRoleToTopic(models.RoleDirektur)
 
 						title := "Surat Masuk Baru"
@@ -110,24 +111,20 @@ func StartNotifierConsumer(ctx context.Context) {
 
 					} else {
 						// Surat Keluar -> Kirim ke MANAJER (Sesuai Scope)
-						var targetRole models.Role
 						if event.Letter.Scope == models.ScopeInternal {
-							targetRole = models.RoleManajerPKL
+							// Internal -> Manajer PKL
+							topic := mapRoleToTopic(models.RoleManajerPKL)
+							title := "Permintaan Verifikasi"
+							body := fmt.Sprintf("Surat keluar Internal #%s menunggu verifikasi Anda.", event.Letter.NomorSurat)
+							SendNotificationToTopic(sendCtx, topic, title, body, data)
 						} else {
 							// Eksternal: Kirim ke KPP & Pemas (Broadcast sementara)
 							t1 := mapRoleToTopic(models.RoleManajerKPP)
 							t2 := mapRoleToTopic(models.RoleManajerPemas)
-							msg := fmt.Sprintf("Surat keluar #%s menunggu verifikasi.", event.Letter.NomorSurat)
+							msg := fmt.Sprintf("Surat keluar Eksternal #%s menunggu verifikasi.", event.Letter.NomorSurat)
 							SendNotificationToTopic(sendCtx, t1, "Verifikasi Surat", msg, data)
 							SendNotificationToTopic(sendCtx, t2, "Verifikasi Surat", msg, data)
-							return
 						}
-
-						// Internal -> Kirim ke Manajer PKL
-						topic := mapRoleToTopic(targetRole)
-						title := "Permintaan Verifikasi"
-						body := fmt.Sprintf("Surat keluar #%s menunggu verifikasi Anda.", event.Letter.NomorSurat)
-						SendNotificationToTopic(sendCtx, topic, title, body, data)
 					}
 
 				// KASUS 2: Status Berubah (Disetujui, Revisi, Disposisi, dll)
@@ -143,7 +140,6 @@ func StartNotifierConsumer(ctx context.Context) {
 
 					// B. Jika Status jadi 'Sudah Disposisi' -> Balik ke STAF
 					if event.Letter.Status == models.StatusSudahDisposisi {
-						// Tentukan staf mana yg dapat notif
 						var targetRole models.Role
 						if event.Letter.Scope == models.ScopeInternal {
 							targetRole = models.RoleStafLembaga

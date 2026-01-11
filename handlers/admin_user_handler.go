@@ -34,7 +34,7 @@ func AdminCreateUser(c *fiber.Ctx) error {
 		return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "validation error", validationErrors)
 	}
 
-	passwordHash, err := bcryptHash(strings.TrimSpace(req.Password))
+	passwordHash, err := utils.HashPassword(strings.TrimSpace(req.Password))
 	if err != nil {
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to hash password", nil)
 	}
@@ -51,7 +51,7 @@ func AdminCreateUser(c *fiber.Ctx) error {
 	}
 
 	if err := config.DB.Create(&user).Error; err != nil {
-		if isDupErr(err) {
+		if utils.IsDuplicateError(err) {
 			return utils.ErrorResponse(c, fiber.ErrBadRequest.Code, "username or email already exists", nil)
 		}
 		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "failed to create user", err.Error())

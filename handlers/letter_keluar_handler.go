@@ -322,3 +322,74 @@ func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"success": true, "data": verifiers})
 }
+
+func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
+	letterID, _ := c.ParamsInt("id")
+
+	letter, err := h.permService.GetLetterByID(uint(letterID))
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+	}
+
+	if letter.CreatedByID != user.ID {
+		return c.Status(403).JSON(fiber.Map{"error": "Bukan surat Anda"})
+	}
+
+	if letter.Status != models.StatusDraft && letter.Status != models.StatusPerluRevisi {
+		return c.Status(409).JSON(fiber.Map{"error": "Hanya surat Draft atau Revisi yang bisa diedit"})
+	}
+
+	var req struct {
+		Judul      string `json:"judul_surat"`
+		IsiSurat   string `json:"isi_surat"`
+		FilePath   string `json:"file_path"`
+		VerifierID *uint  `json:"assigned_verifier_id"`
+	}
+	c.BodyParser(&req)
+
+	if req.Judul != "" {
+		letter.JudulSurat = req.Judul
+	}
+	if req.IsiSurat != "" {
+		letter.IsiSurat = req.IsiSurat
+	}
+	if req.FilePath != "" {
+		letter.FilePath = req.FilePath
+	}
+
+	// Jika status Revisi, ubah jadi Perlu Verifikasi lagi saat disave
+	if letter.Status == models.StatusPerluRevisi {
+		letter.Status = models.StatusPerluVerifikasi
+		if req.VerifierID != nil {
+			letter.AssignedVerifierID = req.VerifierID
+		}
+	}
+
+	h.db.Save(letter)
+	return c.JSON(fiber.Map{"success": true, "data": letter})
+}
+
+// Dashboard Staf: List surat saya
+func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
+	var letters []models.Letter
+	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).Order("updated_at DESC").Find(&letters)
+	return c.JSON(fiber.Map{"success": true, "data": letters})
+}
+
+// Dashboard Manajer: List yang perlu diverifikasi
+func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
+	var letters []models.Letter
+	// Filter: Status 'perlu_verifikasi' DAN Assigned ke saya
+	h.db.Where("status = ? AND assigned_verifier_id = ?", models.StatusPerluVerifikasi, user.ID).Preload("CreatedBy").Order("created_at ASC").Find(&letters)
+	return c.JSON(fiber.Map{"success": true, "data": letters})
+}
+
+// Dashboard Direktur: List yang perlu disetujui
+func (h *LetterKeluarHandler) GetLettersNeedApproval(c *fiber.Ctx) error {
+	var letters []models.Letter
+	h.db.Where("status = ? AND jenis_surat = ?", models.StatusPerluPersetujuan, models.LetterKeluar).Preload("CreatedBy").Preload("VerifiedBy").Order("created_at ASC").Find(&letters)
+	return c.JSON(fiber.Map{"success": true, "data": letters})
+}

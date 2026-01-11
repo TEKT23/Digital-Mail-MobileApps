@@ -3,24 +3,24 @@ package routes
 import (
 	"TugasAkhir/handlers"
 	"TugasAkhir/middleware"
-	"TugasAkhir/models"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-// Perubahan: Kita butuh parameter 'db' di sini untuk menginisialisasi handler baru
 func SetupRoutes(app *fiber.App, db *gorm.DB) {
-
-	// 1. INISIALISASI HANDLER BARU (Struct Based)
-	// Handler ini butuh koneksi DB agar bisa jalan
+	// ---------------------------------------------------------
+	// 1. INISIALISASI HANDLER (Struct Based)
+	// ---------------------------------------------------------
+	// Handler Baru untuk Workflow & Common Logic
 	lkHandler := handlers.NewLetterKeluarHandler(db)
 	lmHandler := handlers.NewLetterMasukHandler(db)
+	commonHandler := handlers.NewLetterCommonHandler(db) // Pengganti letter_handlers.go (Legacy)
 
 	api := app.Group("/api")
 
 	// ---------------------------------------------------------
-	// A. AUTHENTICATION (Mempertahankan Handler Lama)
+	// 2. AUTH & PUBLIC ROUTES
 	// ---------------------------------------------------------
 	auth := api.Group("/auth")
 	auth.Post("/login", handlers.Login)
@@ -31,13 +31,16 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	auth.Post("/reset-password", handlers.ResetPassword)
 
 	// ---------------------------------------------------------
-	// B. MIDDLEWARE GLOBAL (Require Login)
+	// 3. MIDDLEWARE & UTILITY
 	// ---------------------------------------------------------
-	// Semua route di bawah baris ini butuh Token JWT
+	// Semua route di bawah ini Wajib Login
 	api.Use(middleware.RequireAuth())
 
+	// Route Upload File (PDF/Gambar) - Handler Baru
+	api.Post("/upload", handlers.UploadFileHandler)
+
 	// ---------------------------------------------------------
-	// C. PROFILE & SETTINGS (Mempertahankan Handler Lama)
+	// 4. PROFILE & SETTINGS
 	// ---------------------------------------------------------
 	settings := api.Group("/settings")
 	settings.Get("/profile", handlers.GetMyProfile)
@@ -45,81 +48,62 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	settings.Put("/change-password", handlers.ChangePassword)
 
 	// ---------------------------------------------------------
-	// D. WORKFLOW SURAT KELUAR (NEW)
-	// Menggantikan logic Create/Update lama yang generic
+	// 5. MANAJEMEN SURAT (Group: /api/letters)
 	// ---------------------------------------------------------
-	// Group: /api/letters
 	letters := api.Group("/letters")
 
-	// 1. Helper: Dropdown Verifier (Untuk Staf)
+	// --- A. COMMON ROUTES (Bisa untuk Surat Masuk & Keluar) ---
+	// Melihat Detail Surat (dengan Permission Check baru)
+	letters.Get("/:id", commonHandler.GetLetterByID)
+
+	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
+	letters.Delete("/:id", commonHandler.DeleteLetter)
+
+	// --- B. WORKFLOW SURAT KELUAR ---
+
+	// 1. Helper untuk Form (List Manajer)
 	letters.Get("/verifiers", lkHandler.GetAvailableVerifiers)
 
-	// 2. Akses Staf (Create, Edit Draft, Arsip)
-	// Note: RequireStaf() mencakup StafProgram & StafLembaga
+	// 2. Dashboard & Aksi STAF
+	// Get surat-surat yang SAYA buat (Dashboard Staf)
+	letters.Get("/keluar/my", middleware.RequireStaf(), lkHandler.GetMyLetters)
+	// Buat Surat Baru
 	letters.Post("/keluar", middleware.RequireStaf(), lkHandler.CreateSuratKeluar)
-	letters.Put("/keluar/:id", middleware.RequireStaf(), lkHandler.UpdateSurat)
+	// Edit Draft / Revisi (Handler Baru: UpdateDraftLetter)
+	letters.Put("/keluar/:id", middleware.RequireStaf(), lkHandler.UpdateDraftLetter)
+	// Arsipkan Surat (Finalisasi)
 	letters.Post("/keluar/:id/archive", middleware.RequireStaf(), lkHandler.ArchiveLetter)
 
-	// 3. Akses Manajer (Verifikasi)
-	// Note: RequireManajer() mencakup Manajer KPP, Pemas, & PKL
+	// 3. Dashboard & Aksi MANAJER
+	// Get surat yang PERLU SAYA VERIFIKASI (Dashboard Manajer)
+	letters.Get("/keluar/need-verification", middleware.RequireManajer(), lkHandler.GetLettersNeedVerification)
+	// Eksekusi Verifikasi
 	letters.Post("/keluar/:id/verify/approve", middleware.RequireManajer(), lkHandler.VerifyLetterApprove)
 	letters.Post("/keluar/:id/verify/reject", middleware.RequireManajer(), lkHandler.VerifyLetterReject)
 
-	// 4. Akses Direktur (Approval Tanda Tangan)
+	// 4. Dashboard & Aksi DIREKTUR
+	// Get surat yang PERLU PERSETUJUAN (Dashboard Direktur)
+	letters.Get("/keluar/need-approval", middleware.RequireDirektur(), lkHandler.GetLettersNeedApproval)
+	// Eksekusi Approval
 	letters.Post("/keluar/:id/approve", middleware.RequireDirektur(), lkHandler.ApproveLetterByDirektur)
 	letters.Post("/keluar/:id/reject", middleware.RequireDirektur(), lkHandler.RejectLetterByDirektur)
 
-	// ---------------------------------------------------------
-	// E. WORKFLOW SURAT MASUK (NEW)
-	// ---------------------------------------------------------
+	// --- C. WORKFLOW SURAT MASUK ---
 
-	// 1. Akses Staf (Input Surat Masuk)
+	// 1. Aksi STAF
 	letters.Post("/masuk", middleware.RequireStaf(), lmHandler.CreateSuratMasuk)
 	letters.Post("/masuk/:id/archive", middleware.RequireStaf(), lmHandler.ArchiveSuratMasuk)
 
-	// 2. Akses Direktur (Disposisi)
-	letters.Get("/masuk/for-disposition", middleware.RequireDirektur(), lmHandler.GetLettersMasukForDisposition)
+	// 2. Dashboard & Aksi DIREKTUR (Disposisi)
+	// Get surat masuk yang BELUM DISPOSISI
+	letters.Get("/masuk/need-disposition", middleware.RequireDirektur(), lmHandler.GetLettersMasukForDisposition)
+	// Eksekusi Disposisi
 	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
 
 	// ---------------------------------------------------------
-	// F. VIEW / LIST DATA (GABUNGAN LAMA & BARU)
-	// Handler ListLetters lama mungkin perlu diupdate query-nya nanti
-	// agar support filter scope/status baru.
+	// 6. ADMIN ZONE
 	// ---------------------------------------------------------
-
-	// Get All Letters (Dashboard) - Updated Roles
-	letters.Get("/",
-		middleware.RequireRole(
-			models.RoleStafProgram, models.RoleStafLembaga, // Staf
-			models.RoleManajerKPP, models.RoleManajerPemas, models.RoleManajerPKL, // Manajer
-			models.RoleDirektur, // Direktur
-			models.RoleAdmin,    // Admin
-		),
-		handlers.ListLetters, // Pastikan handler lama ini masih ada
-	)
-
-	// Get Detail Letter
-	letters.Get("/:id",
-		middleware.RequireRole(
-			models.RoleStafProgram, models.RoleStafLembaga,
-			models.RoleManajerKPP, models.RoleManajerPemas, models.RoleManajerPKL,
-			models.RoleDirektur, models.RoleAdmin,
-		),
-		handlers.GetLetterByID, // Pastikan handler lama ini masih ada
-	)
-
-	// Delete Letter (Hanya Admin atau Staf Pembuat - logic di handler)
-	letters.Delete("/:id",
-		middleware.RequireRole(models.RoleStafProgram, models.RoleStafLembaga, models.RoleAdmin),
-		handlers.DeleteLetter,
-	)
-
-	// ---------------------------------------------------------
-	// G. ADMIN ZONE (Mempertahankan Handler Lama)
-	// ---------------------------------------------------------
-	admin := api.Group("/admin",
-		middleware.RequireRole(models.RoleAdmin), // Pakai helper baru RequireRole
-	)
+	admin := api.Group("/admin", middleware.RequireAdmin())
 	admin.Post("/users", handlers.AdminCreateUser)
 	admin.Get("/users", handlers.AdminListUsers)
 	admin.Get("/users/:id", handlers.AdminGetUserByID)

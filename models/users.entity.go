@@ -52,3 +52,12 @@ func (u *User) CanVerifyScope(scope string) bool {
 
 func (u *User) IsDirektur() bool { return u.Role == RoleDirektur }
 func (u *User) IsAdmin() bool    { return u.Role == RoleAdmin }
+
+func (r Role) IsValid() bool {
+	switch r {
+	case RoleAdmin, RoleDirektur, RoleStafProgram, RoleStafLembaga, RoleManajerKPP, RoleManajerPemas, RoleManajerPKL:
+		return true
+	default:
+		return false
+	}
+}

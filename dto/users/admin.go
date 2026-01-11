@@ -56,8 +56,9 @@ func (r *AdminUserCreateRequest) Validate() map[string]string {
 	} else if len(r.Password) < 8 {
 		errors["password"] = "password must be at least 8 characters"
 	}
-	if !isValidRole(r.Role) {
-		errors["role"] = "role must be bagian_umum, adc, direktur, or admin"
+	
+	if !r.Role.IsValid() {
+		errors["role"] = "role is invalid"
 	}
 
 	return errors
@@ -72,27 +73,12 @@ func (r *AdminUserUpdateRequest) Validate() map[string]string {
 			errors["password"] = "password must be at least 8 characters"
 		}
 	}
-	if r.Role != nil && !isValidRole(*r.Role) {
-		errors["role"] = "role must be bagian_umum, adc, direktur, or admin"
+
+	if r.Role != nil && !(*r.Role).IsValid() {
+		errors["role"] = "role is invalid"
 	}
 
 	return errors
-}
-
-func isValidRole(role models.Role) bool {
-	switch role {
-	// Daftar Role Lengkap (Baru)
-	case models.RoleAdmin,
-		models.RoleDirektur,
-		models.RoleStafProgram,
-		models.RoleStafLembaga,
-		models.RoleManajerKPP,
-		models.RoleManajerPemas,
-		models.RoleManajerPKL:
-		return true
-	default:
-		return false
-	}
 }
 
 func NewAdminUserResponse(user models.User) AdminUserResponse {

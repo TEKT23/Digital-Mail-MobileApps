@@ -144,3 +144,40 @@ func (ps *PermissionService) GetLetterByID(id uint) (*models.Letter, error) {
 	}
 	return &letter, nil
 }
+
+func (ps *PermissionService) CanUserViewLetter(user *models.User, letter *models.Letter) (bool, error) {
+	if user == nil {
+		return false, ErrUnauthorized
+	}
+
+	// 1. Admin & Direktur bisa lihat semua
+	if user.Role == models.RoleAdmin || user.Role == models.RoleDirektur {
+		return true, nil
+	}
+
+	// 2. Pembuat surat (Staf) bisa lihat suratnya sendiri
+	if letter.CreatedByID == user.ID {
+		return true, nil
+	}
+
+	// 3. Verifier (Manajer) bisa lihat jika ditugaskan kepadanya
+	if letter.AssignedVerifierID != nil && *letter.AssignedVerifierID == user.ID {
+		return true, nil
+	}
+
+	// 4. Manajer bisa lihat surat di Scope-nya (meski bukan verifier langsung, opsional)
+	if user.IsManajer() {
+		return user.CanVerifyScope(letter.Scope), nil
+	}
+
+	// 5. Staf bisa lihat surat di Scope bidangnya (misal: arsip lama)
+	// Logic simplifikasi: Staf Program lihat Eksternal, Staf Lembaga lihat Internal
+	if user.Role == models.RoleStafProgram && letter.Scope == models.ScopeEksternal {
+		return true, nil
+	}
+	if user.Role == models.RoleStafLembaga && letter.Scope == models.ScopeInternal {
+		return true, nil
+	}
+
+	return false, nil
+}
