@@ -65,3 +65,39 @@ func IsDuplicateError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "duplicate entry") || strings.Contains(msg, "unique constraint")
 }
+
+func Created(c *fiber.Ctx, message string, data interface{}) error {
+	return SuccessResponse(c, fiber.StatusCreated, message, data)
+}
+
+func OK(c *fiber.Ctx, message string, data interface{}) error {
+	return SuccessResponse(c, fiber.StatusOK, message, data)
+}
+
+func NotFound(c *fiber.Ctx, message string) error {
+	return ErrorResponse(c, fiber.StatusNotFound, message, nil)
+}
+
+func Unauthorized(c *fiber.Ctx, message string) error {
+	return ErrorResponse(c, fiber.StatusUnauthorized, message, nil)
+}
+
+func Forbidden(c *fiber.Ctx, message string) error {
+	return ErrorResponse(c, fiber.StatusForbidden, message, nil)
+}
+
+func BadRequest(c *fiber.Ctx, message string, errors interface{}) error {
+	return ErrorResponse(c, fiber.StatusBadRequest, message, errors)
+}
+
+func UnprocessableEntity(c *fiber.Ctx, message string, errors interface{}) error {
+	return ErrorResponse(c, fiber.StatusUnprocessableEntity, message, errors)
+}
+
+func InternalServerError(c *fiber.Ctx, message string) error {
+	return ErrorResponse(c, fiber.StatusInternalServerError, message, nil)
+}
+
+func Conflict(c *fiber.Ctx, message string) error {
+	return ErrorResponse(c, fiber.StatusConflict, message, nil)
+}

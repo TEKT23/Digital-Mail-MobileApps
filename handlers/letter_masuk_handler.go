@@ -4,6 +4,7 @@ import (
 	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 	"TugasAkhir/services"
+	"TugasAkhir/utils" // Imported for response helpers
 	"TugasAkhir/utils/events"
 	"time"
 
@@ -27,7 +28,7 @@ func NewLetterMasukHandler(db *gorm.DB) *LetterMasukHandler {
 func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return utils.Unauthorized(c, "Unauthorized")
 	}
 
 	// Request Body
@@ -44,13 +45,13 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+		return utils.BadRequest(c, "Invalid request body", nil)
 	}
 
 	// 1. Cek Permission (Internal vs Eksternal)
 	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope)
 	if !canCreate {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak memiliki izin membuat surat masuk dengan scope ini"})
+		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat masuk dengan scope ini")
 	}
 
 	// Helper parsing tanggal
@@ -89,7 +90,7 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	}
 
 	if err := h.db.Create(&letter).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal mencatat surat masuk"})
+		return utils.InternalServerError(c, "Gagal mencatat surat masuk")
 	}
 
 	// 3. Kirim Notifikasi (Event Bus)
@@ -99,18 +100,14 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		Letter: letter,
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"success": true,
-		"message": "Surat masuk berhasil dicatat dan dikirim ke Direktur",
-		"data":    letter,
-	})
+	return utils.Created(c, "Surat masuk berhasil dicatat dan dikirim ke Direktur", letter)
 }
 
 // DisposeSuratMasuk - Direktur memberikan instruksi disposisi
 func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return utils.Unauthorized(c, "Unauthorized")
 	}
 
 	letterID, _ := c.ParamsInt("id")
@@ -118,12 +115,12 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 	// Validasi Permission
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Letter not found"})
+		return utils.NotFound(c, "Letter not found")
 	}
 
 	canDispose, _ := h.permService.CanUserDisposeLetter(user, letter)
 	if !canDispose {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak berhak mendisposisi surat ini"})
+		return utils.Forbidden(c, "Anda tidak berhak mendisposisi surat ini")
 	}
 
 	var req struct {
@@ -156,25 +153,25 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Disposisi berhasil disimpan", "data": letter})
+	return utils.OK(c, "Disposisi berhasil disimpan", letter)
 }
 
 // ArchiveSuratMasuk - Staf arsip surat yang sudah didisposisi
 func (h *LetterMasukHandler) ArchiveSuratMasuk(c *fiber.Ctx) error {
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
-		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+		return utils.Unauthorized(c, "Unauthorized")
 	}
 
 	letterID, _ := c.ParamsInt("id")
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+		return utils.NotFound(c, "Not found")
 	}
 
 	canArchive, _ := h.permService.CanUserArchiveLetter(user, letter)
 	if !canArchive {
-		return c.Status(403).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	oldStatus := letter.Status
@@ -187,14 +184,14 @@ func (h *LetterMasukHandler) ArchiveSuratMasuk(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat masuk diarsipkan"})
+	return utils.OK(c, "Surat masuk diarsipkan", nil)
 }
 
 // GetLettersMasukForDisposition - Helper List untuk Direktur
 func (h *LetterMasukHandler) GetLettersMasukForDisposition(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	if !user.IsDirektur() {
-		return c.Status(403).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	var letters []models.Letter
@@ -203,5 +200,5 @@ func (h *LetterMasukHandler) GetLettersMasukForDisposition(c *fiber.Ctx) error {
 		Order("created_at DESC").
 		Find(&letters)
 
-	return c.JSON(fiber.Map{"success": true, "data": letters})
+	return utils.OK(c, "List disposisi berhasil diambil", letters)
 }

@@ -4,6 +4,7 @@ import (
 	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 	"TugasAkhir/services"
+	"TugasAkhir/utils" // Imported for response helpers
 	"TugasAkhir/utils/events"
 	"strings"
 
@@ -27,7 +28,7 @@ func NewLetterKeluarHandler(db *gorm.DB) *LetterKeluarHandler {
 func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return utils.Unauthorized(c, "Unauthorized")
 	}
 
 	var req struct {
@@ -41,16 +42,16 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+		return utils.BadRequest(c, "Invalid request body", nil)
 	}
 
 	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope)
 	if !canCreate {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak memiliki izin membuat surat dengan scope ini"})
+		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat dengan scope ini")
 	}
 
 	if req.AssignedVerifierID == nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Surat keluar wajib memilih verifikator (Manajer)"})
+		return utils.UnprocessableEntity(c, "Surat keluar wajib memilih verifikator (Manajer)", nil)
 	}
 
 	letter := models.Letter{
@@ -68,19 +69,15 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	}
 
 	if err := h.db.Create(&letter).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal membuat surat"})
+		return utils.InternalServerError(c, "Gagal membuat surat")
 	}
-	
+
 	events.LetterEventBus <- events.LetterEvent{
 		Type:   events.LetterCreated,
 		Letter: letter,
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"success": true,
-		"message": "Surat keluar berhasil dibuat",
-		"data":    letter,
-	})
+	return utils.Created(c, "Surat keluar berhasil dibuat", letter)
 }
 
 // UpdateDraftLetter - Handler untuk edit dan submit draft
@@ -91,15 +88,15 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 	// 1. Ambil Data Awal
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Letter not found"})
+		return utils.NotFound(c, "Letter not found")
 	}
 
 	if letter.CreatedByID != user.ID {
-		return c.Status(403).JSON(fiber.Map{"error": "Bukan surat Anda"})
+		return utils.Forbidden(c, "Bukan surat Anda")
 	}
 
 	if letter.Status != models.StatusDraft && letter.Status != models.StatusPerluRevisi {
-		return c.Status(409).JSON(fiber.Map{"error": "Hanya surat Draft atau Revisi yang bisa diedit"})
+		return utils.Conflict(c, "Hanya surat Draft atau Revisi yang bisa diedit")
 	}
 
 	oldStatus := letter.Status
@@ -135,7 +132,7 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 
 	// 3. Simpan ke DB
 	if err := h.db.Save(letter).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan perubahan"})
+		return utils.InternalServerError(c, "Gagal menyimpan perubahan")
 	}
 
 	// 4. Kirim Event (JIKA STATUS BERUBAH)
@@ -151,7 +148,7 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.JSON(fiber.Map{"success": true, "data": letter})
+	return utils.OK(c, "Draft berhasil diperbarui", letter)
 }
 
 // VerifyLetterApprove
@@ -161,12 +158,12 @@ func (h *LetterKeluarHandler) VerifyLetterApprove(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Letter not found"})
+		return utils.NotFound(c, "Letter not found")
 	}
 
 	canVerify, _ := h.permService.CanUserVerifyLetter(user, letter)
 	if !canVerify {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak memiliki izin memverifikasi surat ini"})
+		return utils.Forbidden(c, "Anda tidak memiliki izin memverifikasi surat ini")
 	}
 
 	oldStatus := letter.Status
@@ -180,7 +177,7 @@ func (h *LetterKeluarHandler) VerifyLetterApprove(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat berhasil diverifikasi"})
+	return utils.OK(c, "Surat berhasil diverifikasi", nil)
 }
 
 // VerifyLetterReject
@@ -190,12 +187,12 @@ func (h *LetterKeluarHandler) VerifyLetterReject(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Letter not found"})
+		return utils.NotFound(c, "Letter not found")
 	}
 
 	canVerify, _ := h.permService.CanUserVerifyLetter(user, letter)
 	if !canVerify {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	oldStatus := letter.Status
@@ -208,7 +205,7 @@ func (h *LetterKeluarHandler) VerifyLetterReject(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat dikembalikan untuk revisi"})
+	return utils.OK(c, "Surat dikembalikan untuk revisi", nil)
 }
 
 // ApproveLetterByDirektur
@@ -218,12 +215,12 @@ func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
+		return utils.NotFound(c, "Not found")
 	}
 
 	canApprove, _ := h.permService.CanUserApproveLetter(user, letter)
 	if !canApprove {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	oldStatus := letter.Status
@@ -237,7 +234,7 @@ func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat berhasil disetujui"})
+	return utils.OK(c, "Surat berhasil disetujui", nil)
 }
 
 // RejectLetterByDirektur
@@ -247,12 +244,12 @@ func (h *LetterKeluarHandler) RejectLetterByDirektur(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
+		return utils.NotFound(c, "Not found")
 	}
 
 	canApprove, _ := h.permService.CanUserApproveLetter(user, letter)
 	if !canApprove {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	oldStatus := letter.Status
@@ -265,7 +262,7 @@ func (h *LetterKeluarHandler) RejectLetterByDirektur(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat ditolak"})
+	return utils.OK(c, "Surat ditolak", nil)
 }
 
 // ArchiveLetter
@@ -275,12 +272,12 @@ func (h *LetterKeluarHandler) ArchiveLetter(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
+		return utils.NotFound(c, "Not found")
 	}
 
 	canArchive, _ := h.permService.CanUserArchiveLetter(user, letter)
 	if !canArchive {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
+		return utils.Forbidden(c, "Forbidden")
 	}
 
 	oldStatus := letter.Status
@@ -293,7 +290,7 @@ func (h *LetterKeluarHandler) ArchiveLetter(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
-	return c.JSON(fiber.Map{"success": true, "message": "Surat diarsipkan"})
+	return utils.OK(c, "Surat diarsipkan", nil)
 }
 
 // GetAvailableVerifiers
@@ -311,7 +308,7 @@ func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 	}
 
 	query.Select("id, username, email, role, jabatan").Find(&verifiers)
-	return c.JSON(fiber.Map{"success": true, "data": verifiers})
+	return utils.OK(c, "Data verifikator berhasil diambil", verifiers)
 }
 
 // GetMyLetters
@@ -319,7 +316,7 @@ func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
 	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).Order("updated_at DESC").Find(&letters)
-	return c.JSON(fiber.Map{"success": true, "data": letters})
+	return utils.OK(c, "List surat saya berhasil diambil", letters)
 }
 
 // GetLettersNeedVerification (FIXED)
@@ -332,12 +329,12 @@ func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
 		Order("created_at ASC").
 		Find(&letters)
 
-	return c.JSON(fiber.Map{"success": true, "data": letters})
+	return utils.OK(c, "List surat perlu verifikasi berhasil diambil", letters)
 }
 
 // GetLettersNeedApproval
 func (h *LetterKeluarHandler) GetLettersNeedApproval(c *fiber.Ctx) error {
 	var letters []models.Letter
 	h.db.Where("status = ? AND jenis_surat = ?", models.StatusPerluPersetujuan, models.LetterKeluar).Preload("CreatedBy").Preload("VerifiedBy").Order("created_at ASC").Find(&letters)
-	return c.JSON(fiber.Map{"success": true, "data": letters})
+	return utils.OK(c, "List surat perlu persetujuan berhasil diambil", letters)
 }
