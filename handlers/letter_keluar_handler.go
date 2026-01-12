@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Gunakan nama struct sesuai request Anda
 type LetterKeluarHandler struct {
 	db          *gorm.DB
 	permService *services.PermissionService
@@ -26,13 +25,11 @@ func NewLetterKeluarHandler(db *gorm.DB) *LetterKeluarHandler {
 
 // CreateSuratKeluar - Handler untuk membuat surat keluar baru
 func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
-	// 1. Ambil User dari Context (Middleware)
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
-	// 2. Parse Request Body (Format JSON tetap Bahasa Indonesia agar frontend tidak error)
 	var req struct {
 		NomorSurat         string `json:"nomor_surat"`
 		Judul              string `json:"judul_surat"`
@@ -47,41 +44,33 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	// 3. Cek Permission: Apakah user boleh buat surat dengan Scope ini?
 	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope)
 	if !canCreate {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak memiliki izin membuat surat dengan scope ini"})
 	}
 
-	// 4. Validasi: Surat Keluar WAJIB punya verifikator (Manajer)
 	if req.AssignedVerifierID == nil {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
-			"error": "Surat keluar wajib memilih verifikator (Manajer)",
-		})
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"error": "Surat keluar wajib memilih verifikator (Manajer)"})
 	}
 
-	// 5. Buat Object Surat
 	letter := models.Letter{
 		NomorSurat:         req.NomorSurat,
 		JudulSurat:         req.Judul,
-		BidangTujuan:       req.Tujuan, // Mapping field Tujuan -> BidangTujuan
+		BidangTujuan:       req.Tujuan,
 		IsiSurat:           req.IsiSurat,
-		JenisSurat:         models.LetterKeluar,          // Tipe Surat Keluar
-		Scope:              req.Scope,                    // Internal / Eksternal
-		Status:             models.StatusPerluVerifikasi, // Langsung masuk status verifikasi
+		JenisSurat:         models.LetterKeluar,
+		Scope:              req.Scope,
+		Status:             models.StatusDraft, // Default Draft
 		CreatedByID:        user.ID,
 		AssignedVerifierID: req.AssignedVerifierID,
 		FilePath:           req.FilePath,
-		Prioritas:          models.PriorityBiasa, // Default
+		Prioritas:          models.PriorityBiasa,
 	}
 
-	// 6. Simpan ke Database
 	if err := h.db.Create(&letter).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Gagal membuat surat"})
 	}
-
-	// 7. Kirim Notifikasi (Pakai Event Bus yang sudah ada di Utils Anda)
-	// Ini akan ditangkap oleh utils/fcm/fcm.go
+	
 	events.LetterEventBus <- events.LetterEvent{
 		Type:   events.LetterCreated,
 		Letter: letter,
@@ -94,62 +83,78 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	})
 }
 
-// UpdateSurat - Handler untuk edit surat (Hanya jika Draft / Perlu Revisi)
-func (h *LetterKeluarHandler) UpdateSurat(c *fiber.Ctx) error {
-	user, err := middleware.GetUserFromContext(c)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
-	}
-
+// UpdateDraftLetter - Handler untuk edit dan submit draft
+func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
 
-	// Get Data Surat
+	// 1. Ambil Data Awal
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Letter not found"})
+		return c.Status(404).JSON(fiber.Map{"error": "Letter not found"})
 	}
 
-	// Permission: Hanya pembuat yang boleh edit
 	if letter.CreatedByID != user.ID {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Hanya pembuat surat yang bisa mengedit"})
+		return c.Status(403).JSON(fiber.Map{"error": "Bukan surat Anda"})
 	}
 
-	// Validasi Status: Hanya boleh edit jika Draft atau Perlu Revisi
 	if letter.Status != models.StatusDraft && letter.Status != models.StatusPerluRevisi {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Surat sedang diproses, tidak bisa diedit"})
+		return c.Status(409).JSON(fiber.Map{"error": "Hanya surat Draft atau Revisi yang bisa diedit"})
 	}
+
+	oldStatus := letter.Status
 
 	var req struct {
-		NomorSurat         string `json:"nomor_surat"`
-		Judul              string `json:"judul_surat"`
-		IsiSurat           string `json:"isi_surat"`
-		Tujuan             string `json:"tujuan"`
-		AssignedVerifierID *uint  `json:"assigned_verifier_id"`
-		FilePath           string `json:"file_path"`
+		Judul      string `json:"judul_surat"`
+		IsiSurat   string `json:"isi_surat"`
+		FilePath   string `json:"file_path"`
+		VerifierID *uint  `json:"assigned_verifier_id"`
 	}
 	c.BodyParser(&req)
 
-	// Update Field
-	letter.NomorSurat = req.NomorSurat
-	letter.JudulSurat = req.Judul
-	letter.IsiSurat = req.IsiSurat
-	letter.BidangTujuan = req.Tujuan
-	letter.FilePath = req.FilePath
-
-	if req.AssignedVerifierID != nil {
-		letter.AssignedVerifierID = req.AssignedVerifierID
+	if req.Judul != "" {
+		letter.JudulSurat = req.Judul
+	}
+	if req.IsiSurat != "" {
+		letter.IsiSurat = req.IsiSurat
+	}
+	if req.FilePath != "" {
+		letter.FilePath = req.FilePath
 	}
 
-	h.db.Save(letter)
+	statusChanged := false
 
-	return c.JSON(fiber.Map{
-		"success": true,
-		"message": "Surat berhasil diupdate",
-		"data":    letter,
-	})
+	// 2. Logic Submit (Draft -> Perlu Verifikasi)
+	if req.VerifierID != nil {
+		if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
+			letter.Status = models.StatusPerluVerifikasi
+			letter.AssignedVerifierID = req.VerifierID
+			statusChanged = true
+		}
+	}
+
+	// 3. Simpan ke DB
+	if err := h.db.Save(letter).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan perubahan"})
+	}
+
+	// 4. Kirim Event (JIKA STATUS BERUBAH)
+	if statusChanged {
+		var freshLetter models.Letter
+		if err := h.db.Preload("AssignedVerifier").First(&freshLetter, letter.ID).Error; err == nil {
+			// Kirim data yang sudah lengkap (freshLetter) ke event bus
+			events.LetterEventBus <- events.LetterEvent{
+				Type:      events.LetterStatusMoved,
+				Letter:    freshLetter,
+				OldStatus: oldStatus,
+			}
+		}
+	}
+
+	return c.JSON(fiber.Map{"success": true, "data": letter})
 }
 
-// VerifyLetterApprove - Manajer menyetujui verifikasi
+// VerifyLetterApprove
 func (h *LetterKeluarHandler) VerifyLetterApprove(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
@@ -159,20 +164,16 @@ func (h *LetterKeluarHandler) VerifyLetterApprove(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Letter not found"})
 	}
 
-	// Cek Permission Verifikasi (Manajer)
 	canVerify, _ := h.permService.CanUserVerifyLetter(user, letter)
 	if !canVerify {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Anda tidak memiliki izin memverifikasi surat ini"})
 	}
 
 	oldStatus := letter.Status
-
-	// Update Status: Perlu Verifikasi -> Perlu Persetujuan
 	letter.Status = models.StatusPerluPersetujuan
 	letter.VerifiedByID = &user.ID
 	h.db.Save(letter)
 
-	// Kirim Notifikasi (Status Moved)
 	events.LetterEventBus <- events.LetterEvent{
 		Type:      events.LetterStatusMoved,
 		Letter:    *letter,
@@ -182,7 +183,7 @@ func (h *LetterKeluarHandler) VerifyLetterApprove(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Surat berhasil diverifikasi"})
 }
 
-// VerifyLetterReject - Manajer menolak (revisi)
+// VerifyLetterReject
 func (h *LetterKeluarHandler) VerifyLetterReject(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
@@ -198,8 +199,6 @@ func (h *LetterKeluarHandler) VerifyLetterReject(c *fiber.Ctx) error {
 	}
 
 	oldStatus := letter.Status
-
-	// Update Status: Perlu Verifikasi -> Perlu Revisi
 	letter.Status = models.StatusPerluRevisi
 	h.db.Save(letter)
 
@@ -212,7 +211,7 @@ func (h *LetterKeluarHandler) VerifyLetterReject(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Surat dikembalikan untuk revisi"})
 }
 
-// ApproveLetterByDirektur - Direktur menyetujui surat
+// ApproveLetterByDirektur
 func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
@@ -222,17 +221,14 @@ func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	// Cek Permission Approval (Direktur)
 	canApprove, _ := h.permService.CanUserApproveLetter(user, letter)
 	if !canApprove {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Forbidden"})
 	}
 
 	oldStatus := letter.Status
-
-	// Update Status: Perlu Persetujuan -> Disetujui
 	letter.Status = models.StatusDisetujui
-	letter.DisposedByID = &user.ID // Direktur tercatat di disposed_by
+	letter.DisposedByID = &user.ID
 	h.db.Save(letter)
 
 	events.LetterEventBus <- events.LetterEvent{
@@ -244,7 +240,7 @@ func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Surat berhasil disetujui"})
 }
 
-// RejectLetterByDirektur - Direktur menolak surat
+// RejectLetterByDirektur
 func (h *LetterKeluarHandler) RejectLetterByDirektur(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
@@ -260,8 +256,6 @@ func (h *LetterKeluarHandler) RejectLetterByDirektur(c *fiber.Ctx) error {
 	}
 
 	oldStatus := letter.Status
-
-	// Update Status: Perlu Persetujuan -> Perlu Revisi
 	letter.Status = models.StatusPerluRevisi
 	h.db.Save(letter)
 
@@ -274,7 +268,7 @@ func (h *LetterKeluarHandler) RejectLetterByDirektur(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Surat ditolak"})
 }
 
-// ArchiveLetter - Staf mengarsipkan surat final
+// ArchiveLetter
 func (h *LetterKeluarHandler) ArchiveLetter(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	letterID, _ := c.ParamsInt("id")
@@ -302,13 +296,12 @@ func (h *LetterKeluarHandler) ArchiveLetter(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Surat diarsipkan"})
 }
 
-// GetAvailableVerifiers - Helper untuk dropdown Manajer di Frontend
+// GetAvailableVerifiers
 func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 	scope := c.Query("scope")
 	var verifiers []models.User
 	query := h.db.Model(&models.User{})
 
-	// Filter berdasarkan Scope
 	if strings.EqualFold(scope, models.ScopeEksternal) {
 		query = query.Where("role IN ?", []models.Role{models.RoleManajerKPP, models.RoleManajerPemas})
 	} else if strings.EqualFold(scope, models.ScopeInternal) {
@@ -317,60 +310,11 @@ func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 		query = query.Where("role IN ?", []models.Role{models.RoleManajerKPP, models.RoleManajerPemas, models.RoleManajerPKL})
 	}
 
-	// Hanya ambil field penting (jangan password hash)
 	query.Select("id, username, email, role, jabatan").Find(&verifiers)
-
 	return c.JSON(fiber.Map{"success": true, "data": verifiers})
 }
 
-func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
-	user, _ := middleware.GetUserFromContext(c)
-	letterID, _ := c.ParamsInt("id")
-
-	letter, err := h.permService.GetLetterByID(uint(letterID))
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
-	}
-
-	if letter.CreatedByID != user.ID {
-		return c.Status(403).JSON(fiber.Map{"error": "Bukan surat Anda"})
-	}
-
-	if letter.Status != models.StatusDraft && letter.Status != models.StatusPerluRevisi {
-		return c.Status(409).JSON(fiber.Map{"error": "Hanya surat Draft atau Revisi yang bisa diedit"})
-	}
-
-	var req struct {
-		Judul      string `json:"judul_surat"`
-		IsiSurat   string `json:"isi_surat"`
-		FilePath   string `json:"file_path"`
-		VerifierID *uint  `json:"assigned_verifier_id"`
-	}
-	c.BodyParser(&req)
-
-	if req.Judul != "" {
-		letter.JudulSurat = req.Judul
-	}
-	if req.IsiSurat != "" {
-		letter.IsiSurat = req.IsiSurat
-	}
-	if req.FilePath != "" {
-		letter.FilePath = req.FilePath
-	}
-
-	// Jika status Revisi, ubah jadi Perlu Verifikasi lagi saat disave
-	if letter.Status == models.StatusPerluRevisi {
-		letter.Status = models.StatusPerluVerifikasi
-		if req.VerifierID != nil {
-			letter.AssignedVerifierID = req.VerifierID
-		}
-	}
-
-	h.db.Save(letter)
-	return c.JSON(fiber.Map{"success": true, "data": letter})
-}
-
-// Dashboard Staf: List surat saya
+// GetMyLetters
 func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
@@ -378,16 +322,20 @@ func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "data": letters})
 }
 
-// Dashboard Manajer: List yang perlu diverifikasi
+// GetLettersNeedVerification (FIXED)
 func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
-	// Filter: Status 'perlu_verifikasi' DAN Assigned ke saya
-	h.db.Where("status = ? AND assigned_verifier_id = ?", models.StatusPerluVerifikasi, user.ID).Preload("CreatedBy").Order("created_at ASC").Find(&letters)
+
+	h.db.Where("status = ? AND assigned_verifier_id = ?", models.StatusPerluVerifikasi, user.ID).
+		Preload("CreatedBy").
+		Order("created_at ASC").
+		Find(&letters)
+
 	return c.JSON(fiber.Map{"success": true, "data": letters})
 }
 
-// Dashboard Direktur: List yang perlu disetujui
+// GetLettersNeedApproval
 func (h *LetterKeluarHandler) GetLettersNeedApproval(c *fiber.Ctx) error {
 	var letters []models.Letter
 	h.db.Where("status = ? AND jenis_surat = ?", models.StatusPerluPersetujuan, models.LetterKeluar).Preload("CreatedBy").Preload("VerifiedBy").Order("created_at ASC").Find(&letters)
