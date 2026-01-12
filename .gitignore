@@ -1,4 +1,2 @@
-.gitignore
-digimail-mobile-firebase-adminsdk-fbsvc-77c65bbf85.json
-.env
-*.json
+# Config files
+config/database.go
