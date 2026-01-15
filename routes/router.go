@@ -9,19 +9,15 @@ import (
 )
 
 func SetupRoutes(app *fiber.App, db *gorm.DB) {
-	// ---------------------------------------------------------
-	// 1. INISIALISASI HANDLER (Struct Based)
-	// ---------------------------------------------------------
-	// Handler Baru untuk Workflow & Common Logic
+
+	// 1. INISIALISASI HANDLER
 	lkHandler := handlers.NewLetterKeluarHandler(db)
 	lmHandler := handlers.NewLetterMasukHandler(db)
-	commonHandler := handlers.NewLetterCommonHandler(db) // Pengganti letter_handlers.go (Legacy)
+	commonHandler := handlers.NewLetterCommonHandler(db) //
 
 	api := app.Group("/api")
 
-	// ---------------------------------------------------------
 	// 2. AUTH & PUBLIC ROUTES
-	// ---------------------------------------------------------
 	auth := api.Group("/auth")
 	auth.Post("/login", handlers.Login)
 	auth.Post("/register", handlers.Register)
@@ -30,30 +26,23 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	auth.Post("/forgot-password", handlers.RequestPasswordReset)
 	auth.Post("/reset-password", handlers.ResetPassword)
 
-	// ---------------------------------------------------------
 	// 3. MIDDLEWARE & UTILITY
-	// ---------------------------------------------------------
-	// Semua route di bawah ini Wajib Login
 	api.Use(middleware.RequireAuth())
 
-	// Route Upload File (PDF/Gambar) - Handler Baru
+	// Route Upload File (PDF/Gambar)
 	api.Post("/upload", handlers.UploadFileHandler)
 
-	// ---------------------------------------------------------
 	// 4. PROFILE & SETTINGS
-	// ---------------------------------------------------------
 	settings := api.Group("/settings")
 	settings.Get("/profile", handlers.GetMyProfile)
 	settings.Put("/profile", handlers.UpdateMyProfile)
 	settings.Put("/change-password", handlers.ChangePassword)
 
-	// ---------------------------------------------------------
 	// 5. MANAJEMEN SURAT (Group: /api/letters)
-	// ---------------------------------------------------------
 	letters := api.Group("/letters")
 
-	// --- A. COMMON ROUTES (Bisa untuk Surat Masuk & Keluar) ---
-	// Melihat Detail Surat (dengan Permission Check baru)
+	// --- A. COMMON ROUTES
+	// Melihat Detail Surat
 	letters.Get("/:id", commonHandler.GetLetterByID)
 
 	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
@@ -65,7 +54,6 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	letters.Get("/verifiers", lkHandler.GetAvailableVerifiers)
 
 	// 2. Dashboard & Aksi STAF
-	// Get surat-surat yang SAYA buat (Dashboard Staf)
 	letters.Get("/keluar/my", middleware.RequireStaf(), lkHandler.GetMyLetters)
 	// Buat Surat Baru
 	letters.Post("/keluar", middleware.RequireStaf(), lkHandler.CreateSuratKeluar)
@@ -75,14 +63,12 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	letters.Post("/keluar/:id/archive", middleware.RequireStaf(), lkHandler.ArchiveLetter)
 
 	// 3. Dashboard & Aksi MANAJER
-	// Get surat yang PERLU SAYA VERIFIKASI (Dashboard Manajer)
 	letters.Get("/keluar/need-verification", middleware.RequireManajer(), lkHandler.GetLettersNeedVerification)
 	// Eksekusi Verifikasi
 	letters.Post("/keluar/:id/verify/approve", middleware.RequireManajer(), lkHandler.VerifyLetterApprove)
 	letters.Post("/keluar/:id/verify/reject", middleware.RequireManajer(), lkHandler.VerifyLetterReject)
 
 	// 4. Dashboard & Aksi DIREKTUR
-	// Get surat yang PERLU PERSETUJUAN (Dashboard Direktur)
 	letters.Get("/keluar/need-approval", middleware.RequireDirektur(), lkHandler.GetLettersNeedApproval)
 	// Eksekusi Approval
 	letters.Post("/keluar/:id/approve", middleware.RequireDirektur(), lkHandler.ApproveLetterByDirektur)
@@ -100,9 +86,7 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	// Eksekusi Disposisi
 	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
 
-	// ---------------------------------------------------------
 	// 6. ADMIN ZONE
-	// ---------------------------------------------------------
 	admin := api.Group("/admin", middleware.RequireAdmin())
 	admin.Post("/users", handlers.AdminCreateUser)
 	admin.Get("/users", handlers.AdminListUsers)

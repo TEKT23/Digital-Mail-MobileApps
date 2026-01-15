@@ -22,16 +22,32 @@ func NewPermissionService(db *gorm.DB) *PermissionService {
 }
 
 // CanUserCreateLetter - Cek izin membuat surat
-func (ps *PermissionService) CanUserCreateLetter(user *models.User, scope string) (bool, error) {
+func (ps *PermissionService) CanUserCreateLetter(user *models.User, scope string, letterType models.LetterType) (bool, error) {
 	if user == nil {
 		return false, ErrUnauthorized
 	}
-	if scope == models.ScopeEksternal {
-		return user.Role == models.RoleStafProgram, nil
+
+	// ATURAN 1: Staf Program
+	if user.Role == models.RoleStafProgram {
+		if letterType == models.LetterKeluar && scope == models.ScopeEksternal {
+			return true, nil
+		}
+		return false, nil
 	}
-	if scope == models.ScopeInternal {
-		return user.Role == models.RoleStafLembaga, nil
+
+	// ATURAN 2: Staf Lembaga
+	if user.Role == models.RoleStafLembaga {
+		if letterType == models.LetterMasuk {
+			return true, nil
+		}
+
+		if letterType == models.LetterKeluar && scope == models.ScopeInternal {
+			return true, nil
+		}
+
+		return false, nil
 	}
+
 	return false, ErrForbidden
 }
 

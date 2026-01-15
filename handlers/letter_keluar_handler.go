@@ -45,9 +45,9 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		return utils.BadRequest(c, "Invalid request body", nil)
 	}
 
-	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope)
+	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope, models.LetterKeluar)
 	if !canCreate {
-		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat dengan scope ini")
+		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat keluar dengan scope ini")
 	}
 
 	if req.AssignedVerifierID == nil {

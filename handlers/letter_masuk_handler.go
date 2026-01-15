@@ -49,9 +49,9 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	}
 
 	// 1. Cek Permission (Internal vs Eksternal)
-	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope)
+	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope, models.LetterMasuk)
 	if !canCreate {
-		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat masuk dengan scope ini")
+		return utils.Forbidden(c, "Anda tidak memiliki izin mencatat surat masuk")
 	}
 
 	// Helper parsing tanggal
