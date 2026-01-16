@@ -43,15 +43,16 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 
 	// --- A. COMMON ROUTES
 	// Melihat Detail Surat
+
+	// 1. Helper untuk Form (List Manajer)
+	letters.Get("/verifiers", lkHandler.GetAvailableVerifiers)
+
 	letters.Get("/:id", commonHandler.GetLetterByID)
 
 	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
 	letters.Delete("/:id", commonHandler.DeleteLetter)
 
 	// --- B. WORKFLOW SURAT KELUAR ---
-
-	// 1. Helper untuk Form (List Manajer)
-	letters.Get("/verifiers", lkHandler.GetAvailableVerifiers)
 
 	// 2. Dashboard & Aksi STAF
 	letters.Get("/keluar/my", middleware.RequireStaf(), lkHandler.GetMyLetters)
