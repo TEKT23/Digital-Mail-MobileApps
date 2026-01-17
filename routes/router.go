@@ -25,6 +25,8 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	auth.Post("/logout", handlers.Logout)
 	auth.Post("/forgot-password", handlers.RequestPasswordReset)
 	auth.Post("/reset-password", handlers.ResetPassword)
+	auth.Post("/forgot-password", handlers.RequestPasswordReset)
+	auth.Post("/reset-password", handlers.ResetPassword)
 
 	// 3. MIDDLEWARE & UTILITY
 	api.Use(middleware.RequireAuth())

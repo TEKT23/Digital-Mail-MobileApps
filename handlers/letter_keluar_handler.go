@@ -16,6 +16,13 @@ type LetterKeluarHandler struct {
 	db          *gorm.DB
 	permService *services.PermissionService
 }
+type VerifierResponse struct {
+	ID       uint   `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Jabatan  string `json:"jabatan"`
+}
 
 func NewLetterKeluarHandler(db *gorm.DB) *LetterKeluarHandler {
 	return &LetterKeluarHandler{
@@ -308,6 +315,17 @@ func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 	}
 
 	query.Select("id, username, email, role, jabatan").Find(&verifiers)
+
+	var response []VerifierResponse
+	for _, v := range verifiers {
+		response = append(response, VerifierResponse{
+			ID:       v.ID,
+			Username: v.Username,
+			Email:    v.Email,
+			Role:     string(v.Role),
+			Jabatan:  v.Jabatan,
+		})
+	}
 	return utils.OK(c, "Data verifikator berhasil diambil", verifiers)
 }
 

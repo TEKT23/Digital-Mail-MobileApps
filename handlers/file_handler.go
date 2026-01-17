@@ -24,7 +24,7 @@ func UploadFileHandler(c *fiber.Ctx) error {
 	}
 
 	// 3. Generate Nama Unik (Key)
-	filename := fmt.Sprintf("surat_%d%s", time.Now().UnixNano(), ext)
+	filename := fmt.Sprintf("surat/surat_%d%s", time.Now().UnixNano(), ext)
 
 	// 4. Upload ke Storage
 	// Kita passing c.Context(), fileHeader langsung, dan filename sebagai key

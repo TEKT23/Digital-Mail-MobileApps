@@ -133,10 +133,12 @@ func (ps *PermissionService) CanUserArchiveLetter(user *models.User, letter *mod
 		return false, ErrUnauthorized
 	}
 
-	if letter.CreatedByID != user.ID {
+	isCreator := letter.CreatedByID == user.ID
+	isArchivist := user.Role == models.RoleStafLembaga
+
+	if !isCreator && !isArchivist {
 		return false, nil
 	}
-
 	if letter.Status != models.StatusDisetujui && letter.Status != models.StatusSudahDisposisi {
 		return false, nil
 	}
