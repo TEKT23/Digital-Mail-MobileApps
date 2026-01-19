@@ -91,7 +91,7 @@ func handleEvent(event events.LetterEvent) {
 		if letter.IsSuratMasuk() {
 			notifyDirektur(ctx, letter, "Surat Masuk Baru", data)
 		}
-		// Jika langsung verifikasi
+		// Jika langsung verifikasi (Auto-Assign Manajer PKL)
 		if letter.Status == models.StatusPerluVerifikasi {
 			notifySpecificManajer(ctx, letter, data)
 		}
@@ -105,11 +105,15 @@ func handleEvent(event events.LetterEvent) {
 			notifyDirektur(ctx, letter, "Butuh Persetujuan", data)
 
 		case models.StatusPerluRevisi:
-			notifyStaf(ctx, letter, "Surat Perlu Revisi", "Mohon cek catatan revisi.", data)
+			notifyStaf(ctx, letter, "Surat Perlu Revisi", "Mohon cek catatan revisi dari pimpinan.", data)
 
-		case models.StatusDisetujui:
-			notifyStaf(ctx, letter, "Surat Disetujui", "Surat Anda telah disetujui Direktur.", data)
-			notifyArchivist(ctx, letter, data) // CC ke Arsip
+		case models.StatusDiarsipkan:
+			// 1. Beritahu Pembuat (Staf Program / Staf Lembaga) bahwa surat sudah Final
+			notifyStaf(ctx, letter, "Surat Disetujui (Final)", "Surat Anda telah disetujui Direktur dan diarsipkan.", data)
+
+			// 2. Beritahu Bagian Arsip (Staf Lembaga) - Jika pembuatnya bukan Staf Lembaga
+			// Logic notifyArchivist bisa kita panggil agar Staf Lembaga (Admin Arsip) tau ada surat baru masuk arsip
+			notifyArchivist(ctx, letter, data)
 
 		case models.StatusSudahDisposisi:
 			notifyStaf(ctx, letter, "Disposisi Turun", "Direktur telah memberikan disposisi.", data)

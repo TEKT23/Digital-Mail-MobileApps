@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"TugasAkhir/dto/letters"
 	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 	"TugasAkhir/services"
 	"TugasAkhir/utils" // Imported for response helpers
 	"TugasAkhir/utils/events"
+	"TugasAkhir/utils/storage"
+	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -33,120 +38,219 @@ func NewLetterKeluarHandler(db *gorm.DB) *LetterKeluarHandler {
 
 // CreateSuratKeluar - Handler untuk membuat surat keluar baru
 func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
+	// 1. Ambil User dari Context (Token JWT)
 	user, err := middleware.GetUserFromContext(c)
 	if err != nil {
 		return utils.Unauthorized(c, "Unauthorized")
 	}
 
-	var req struct {
-		NomorSurat         string `json:"nomor_surat"`
-		Judul              string `json:"judul_surat"`
-		Tujuan             string `json:"tujuan"`
-		IsiSurat           string `json:"isi_surat"`
-		Scope              string `json:"scope"`
-		AssignedVerifierID *uint  `json:"assigned_verifier_id"`
-		FilePath           string `json:"file_path"`
-	}
-
+	// 2. Parsing Form Data (Text Fields)
+	// Fiber akan mencocokkan field form-data dengan tag `form:"..."` di struct DTO
+	var req letters.CreateLetterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "Invalid request body", nil)
+		return utils.BadRequest(c, "Format data tidak valid", err.Error())
 	}
 
+	// 3. Validasi Input (Empty fields dll)
+	if errMap := req.Validate(); len(errMap) > 0 {
+		return utils.BadRequest(c, "Validasi gagal", errMap)
+	}
+
+	// 4. Cek Permission
+	// Memastikan Staf Program boleh buat Eksternal, Staf Lembaga boleh buat Internal
 	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope, models.LetterKeluar)
 	if !canCreate {
 		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat keluar dengan scope ini")
 	}
 
-	if req.AssignedVerifierID == nil {
-		return utils.UnprocessableEntity(c, "Surat keluar wajib memilih verifikator (Manajer)", nil)
+	// 5. Handle File Upload (Wajib ada file)
+	fileHeader, err := c.FormFile("file") // "file" adalah key di form-data
+	if err != nil {
+		return utils.BadRequest(c, "File surat wajib diunggah", nil)
 	}
 
-	letter := models.Letter{
-		NomorSurat:         req.NomorSurat,
-		JudulSurat:         req.Judul,
-		BidangTujuan:       req.Tujuan,
-		IsiSurat:           req.IsiSurat,
-		JenisSurat:         models.LetterKeluar,
-		Scope:              req.Scope,
-		Status:             models.StatusDraft, // Default Draft
-		CreatedByID:        user.ID,
-		AssignedVerifierID: req.AssignedVerifierID,
-		FilePath:           req.FilePath,
-		Prioritas:          models.PriorityBiasa,
+	// Validasi Ekstensi File
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+		return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
 	}
 
+	// Upload ke S3/Storage
+	filename := fmt.Sprintf("surat/keluar_%d%s", time.Now().UnixNano(), ext)
+	uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal mengupload file ke server")
+	}
+
+	// 6. Logic Penentuan Verifikator (Auto-Assign vs Manual)
+	var verifierID *uint
+
+	if strings.EqualFold(req.Scope, models.ScopeInternal) {
+		// === LOGIC OTOMATIS (Internal) ===
+		// Sistem mencari sendiri siapa Manajer PKL-nya
+		var manajerPKL models.User
+		if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err != nil {
+			return utils.InternalServerError(c, "Sistem Gagal: Manajer PKL belum terdaftar di sistem")
+		}
+		verifierID = &manajerPKL.ID
+
+	} else {
+		// === LOGIC MANUAL (Eksternal) ===
+		// User (Staf Program) wajib memilih verifikator dari dropdown
+		if req.AssignedVerifierID == nil {
+			return utils.UnprocessableEntity(c, "Untuk surat Eksternal, Anda wajib memilih Verifikator (Manajer)", nil)
+		}
+		verifierID = req.AssignedVerifierID
+	}
+
+	// 7. Mapping ke Model
+	letter := req.ToModel()
+	letter.JenisSurat = models.LetterKeluar
+
+	// Status langsung ke 'perlu_verifikasi' karena file sudah ada & verifikator sudah ditentukan
+	letter.Status = models.StatusPerluVerifikasi
+
+	letter.CreatedByID = user.ID
+	letter.AssignedVerifierID = verifierID
+	letter.FilePath = uploadedPath
+
+	// Default Prioritas jika kosong
+	if letter.Prioritas == "" {
+		letter.Prioritas = models.PriorityBiasa
+	}
+
+	// 8. Simpan ke Database
 	if err := h.db.Create(&letter).Error; err != nil {
-		return utils.InternalServerError(c, "Gagal membuat surat")
+		return utils.InternalServerError(c, "Gagal menyimpan data surat")
 	}
+
+	// 9. Kirim Event Notifikasi
+	// Kita perlu preload data verifier (nama/role) agar notifikasi di consumer lengkap
+	h.db.Preload("AssignedVerifier").First(&letter, letter.ID)
 
 	events.LetterEventBus <- events.LetterEvent{
 		Type:   events.LetterCreated,
 		Letter: letter,
 	}
 
-	return utils.Created(c, "Surat keluar berhasil dibuat", letter)
+	return utils.Created(c, "Surat keluar berhasil dibuat dan diteruskan ke Verifikator", letter)
 }
 
 // UpdateDraftLetter - Handler untuk edit dan submit draft
 func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
-	user, _ := middleware.GetUserFromContext(c)
+	// 1. Ambil User
+	user, err := middleware.GetUserFromContext(c)
+	if err != nil {
+		return utils.Unauthorized(c, "Unauthorized")
+	}
+
 	letterID, _ := c.ParamsInt("id")
 
-	// 1. Ambil Data Awal
+	// 2. Ambil Data Surat Lama dari DB
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return utils.NotFound(c, "Letter not found")
+		return utils.NotFound(c, "Surat tidak ditemukan")
 	}
 
+	// 3. Validasi Kepemilikan & Status
 	if letter.CreatedByID != user.ID {
-		return utils.Forbidden(c, "Bukan surat Anda")
+		return utils.Forbidden(c, "Anda tidak berhak mengedit surat ini")
 	}
-
+	// Hanya boleh edit jika masih Draft atau sedang Diminta Revisi
 	if letter.Status != models.StatusDraft && letter.Status != models.StatusPerluRevisi {
-		return utils.Conflict(c, "Hanya surat Draft atau Revisi yang bisa diedit")
+		return utils.Conflict(c, "Hanya surat status Draft atau Perlu Revisi yang bisa diedit")
 	}
 
 	oldStatus := letter.Status
 
-	var req struct {
-		Judul      string `json:"judul_surat"`
-		IsiSurat   string `json:"isi_surat"`
-		FilePath   string `json:"file_path"`
-		VerifierID *uint  `json:"assigned_verifier_id"`
+	// 4. Parsing Form Data (Gunakan UpdateLetterRequest dari DTO)
+	var req letters.UpdateLetterRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "Format data tidak valid", err.Error())
 	}
-	c.BodyParser(&req)
 
-	if req.Judul != "" {
-		letter.JudulSurat = req.Judul
+	// Validasi input
+	if errMap := req.Validate(); len(errMap) > 0 {
+		return utils.BadRequest(c, "Validasi gagal", errMap)
 	}
-	if req.IsiSurat != "" {
-		letter.IsiSurat = req.IsiSurat
+
+	// 5. Update Field Teks (Judul, Nomor, dll)
+	// Fungsi ApplyUpdate ini ada di dto/letters/mapper.go
+	letters.ApplyUpdate(letter, &req)
+
+	// 6. Handle File Upload (OPSIONAL untuk Edit)
+	// Jika user mengupload file baru, kita ganti. Jika tidak, pakai file lama.
+	fileHeader, err := c.FormFile("file")
+	if err == nil {
+		// Validasi Ekstensi
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+			return utils.BadRequest(c, "Format file revisi harus PDF atau Gambar", nil)
+		}
+
+		// Upload File Baru
+		filename := fmt.Sprintf("surat/keluar_%d%s", time.Now().UnixNano(), ext)
+		uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
+		if err != nil {
+			return utils.InternalServerError(c, "Gagal mengupload file revisi")
+		}
+
+		// Hapus file lama dari storage jika perlu (Optional, untuk hemat storage)
+		// storage.DeleteFile(c.Context(), letter.FilePath)
+
+		// Update path di database
+		letter.FilePath = uploadedPath
 	}
-	if req.FilePath != "" {
-		letter.FilePath = req.FilePath
-	}
+
+	// 7. Logic Auto-Assign Manajer (Sama seperti Create)
+	// Kita cek Scope surat saat ini (apakah berubah atau tetap)
+	scopeToCheck := letter.Scope
 
 	statusChanged := false
 
-	// 2. Logic Submit (Draft -> Perlu Verifikasi)
-	if req.VerifierID != nil {
-		if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
-			letter.Status = models.StatusPerluVerifikasi
-			letter.AssignedVerifierID = req.VerifierID
-			statusChanged = true
+	if strings.EqualFold(scopeToCheck, models.ScopeInternal) {
+		// === LOGIC OTOMATIS (Internal) ===
+		// Cari Manajer PKL & Auto Assign
+		var manajerPKL models.User
+		if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err == nil {
+			letter.AssignedVerifierID = &manajerPKL.ID
+
+			// Jika user menekan tombol "Simpan & Ajukan" (biasanya ditandai dengan perubahan status/intent)
+			// Di sini kita asumsikan setiap edit pada status 'Revisi' akan mengajukan ulang ke 'Perlu Verifikasi'
+			if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
+				letter.Status = models.StatusPerluVerifikasi
+				statusChanged = true
+			}
+		}
+	} else {
+		// === LOGIC MANUAL (Eksternal) ===
+		// Jika user memilih verifikator baru di dropdown
+		if req.AssignedVerifierID != nil {
+			letter.AssignedVerifierID = req.AssignedVerifierID
+			// Auto ajukan ulang
+			if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
+				letter.Status = models.StatusPerluVerifikasi
+				statusChanged = true
+			}
+		} else if letter.AssignedVerifierID != nil {
+			// Jika user TIDAK ganti verifikator, tapi surat sedang Revisi,
+			// Kita anggap dia mengajukan ulang ke orang yang sama.
+			if letter.Status == models.StatusPerluRevisi {
+				letter.Status = models.StatusPerluVerifikasi
+				statusChanged = true
+			}
 		}
 	}
 
-	// 3. Simpan ke DB
+	// 8. Simpan Perubahan ke DB
 	if err := h.db.Save(letter).Error; err != nil {
-		return utils.InternalServerError(c, "Gagal menyimpan perubahan")
+		return utils.InternalServerError(c, "Gagal menyimpan revisi surat")
 	}
 
-	// 4. Kirim Event (JIKA STATUS BERUBAH)
+	// 9. Kirim Notifikasi (Hanya jika status berubah, misal: Revisi -> Perlu Verifikasi)
 	if statusChanged {
 		var freshLetter models.Letter
 		if err := h.db.Preload("AssignedVerifier").First(&freshLetter, letter.ID).Error; err == nil {
-			// Kirim data yang sudah lengkap (freshLetter) ke event bus
 			events.LetterEventBus <- events.LetterEvent{
 				Type:      events.LetterStatusMoved,
 				Letter:    freshLetter,
@@ -155,7 +259,7 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 		}
 	}
 
-	return utils.OK(c, "Draft berhasil diperbarui", letter)
+	return utils.OK(c, "Surat berhasil diperbarui dan diajukan kembali", letter)
 }
 
 // VerifyLetterApprove
@@ -222,26 +326,33 @@ func (h *LetterKeluarHandler) ApproveLetterByDirektur(c *fiber.Ctx) error {
 
 	letter, err := h.permService.GetLetterByID(uint(letterID))
 	if err != nil {
-		return utils.NotFound(c, "Not found")
+		return utils.NotFound(c, "Surat tidak ditemukan")
 	}
 
 	canApprove, _ := h.permService.CanUserApproveLetter(user, letter)
 	if !canApprove {
-		return utils.Forbidden(c, "Forbidden")
+		return utils.Forbidden(c, "Anda tidak memiliki izin menyetujui surat ini")
 	}
 
 	oldStatus := letter.Status
-	letter.Status = models.StatusDisetujui
-	letter.DisposedByID = &user.ID
-	h.db.Save(letter)
 
+	// [PERUBAHAN DISINI]
+	// Real Case: Langsung "Diarsipkan", bukan "Disetujui" dulu.
+	letter.Status = models.StatusDiarsipkan
+	letter.DisposedByID = &user.ID // DisposedBy diisi Direktur sebagai tanda approval
+
+	if err := h.db.Save(letter).Error; err != nil {
+		return utils.InternalServerError(c, "Gagal memproses persetujuan surat")
+	}
+
+	// Kirim Event Notifikasi
 	events.LetterEventBus <- events.LetterEvent{
 		Type:      events.LetterStatusMoved,
 		Letter:    *letter,
 		OldStatus: oldStatus,
 	}
 
-	return utils.OK(c, "Surat berhasil disetujui", nil)
+	return utils.OK(c, "Surat berhasil disetujui dan otomatis diarsipkan", nil)
 }
 
 // RejectLetterByDirektur

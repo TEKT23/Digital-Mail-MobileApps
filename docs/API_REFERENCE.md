@@ -1,347 +1,277 @@
-# API Reference
+# Referensi API Sistem Penyuratan Digital
 
-This document provides a reference for all the API endpoints available in the Sistem Penyuratan Digital.
+Dokumentasi ini menjelaskan spesifikasi endpoint API untuk aplikasi backend Sistem Penyuratan Digital (Golang Fiber).
 
-## General Information
+## Informasi Umum
 
-**Base URL:** `/api`
+- **Base URL**: `http://localhost:8080/api` (Sesuaikan dengan deployment)
+- **Authentication**: Menggunakan Header `Authorization: Bearer <token>`
+- **Format Date**: RFC3339 (`YYYY-MM-DDTHH:mm:ssZ`) atau `YYYY-MM-DD`
 
-**Authentication:**
+## Standar Response
 
-Authentication is required for most endpoints. The API uses JWT (JSON Web Tokens) for authentication. To authenticate, you need to include an `Authorization` header with the value `Bearer <your_access_token>` in your requests.
+API ini menggunakan format response JSON yang konsisten untuk semua endpoint.
 
-**Standard Response Format:**
-
-All API responses follow a standard JSON format:
+### 1. Response Sukses (200/201)
 
 ```json
 {
-  "status": "success" | "error",
-  "message": "<A descriptive message>",
-  "data": "<The requested data (on success)>",
-  "errors": "<Validation errors or other error details (on error)>"
+  "success": true,
+  "message": "Operasi berhasil",
+  "data": {
+    "id": 1,
+    "nomor_surat": "001/PKL/2026"
+  }
 }
 ```
 
-## Table ofContents
+### 2. Response Error (400/401/403/404/500)
 
-- [Authentication](#authentication)
-  - [POST /api/auth/login](#post-apiauthlogin)
-  - [POST /api/auth/register](#post-apiauthregister)
-  - [POST /api/auth/refresh](#post-apiauthrefresh)
-  - [POST /api/auth/logout](#post-apiauthlogout)
-  - [POST /api/auth/forgot-password](#post-apiauthforgot-password)
-  - [POST /api/auth/reset-password](#post-apiauthreset-password)
-- [File Upload](#file-upload)
-  - [POST /api/upload](#post-apiupload)
-- [Surat Keluar (Outgoing Letters)](#surat-keluar-outgoing-letters)
-  - [Workflow](#workflow)
-  - [POST /api/letters/keluar](#post-apiletterskeluar)
-  - [PUT /api/letters/keluar/:id](#put-apiletterskeluarid)
-  - [POST /api/letters/keluar/:id/verify/approve](#post-apiletterskeluaridverifyapprove)
-  - [POST /api/letters/keluar/:id/approve](#post-apiletterskeluaridapprove)
-  - [GET /api/letters/keluar/my](#get-apiletterskeluarmy)
-  - [GET /api/letters/keluar/need-verification](#get-apiletterskeluarneed-verification)
-  - [GET /api/letters/keluar/need-approval](#get-apiletterskeluarneed-approval)
-- [Surat Masuk (Incoming Letters)](#surat-masuk-incoming-letters)
-  - [Workflow](#workflow-1)
-  - [POST /api/letters/masuk](#post-apilettersmasuk)
-  - [POST /api/letters/masuk/:id/dispose](#post-apilettersmasukiddispose)
-  - [GET /api/letters/masuk/need-disposition](#get-apilettersmasukneed-disposition)
-- [Common Letter Endpoints](#common-letter-endpoints)
-  - [GET /api/letters/:id](#get-apilettersid)
-  - [DELETE /api/letters/:id](#delete-apilettersid)
-- [Admin](#admin)
-- [User Settings](#user-settings)
+```json
+{
+  "success": false,
+  "code": 400,
+  "message": "Validasi gagal",
+  "errors": {
+    "judul_surat": "judul_surat is required",
+    "scope": "scope is required"
+  }
+}
+```
 
 ---
 
-## Authentication
+## 1. Authentication
 
-### POST /api/auth/login
+### Login User
+Masuk ke sistem untuk mendapatkan Access Token.
 
-Logs in a user and returns an access token and a refresh token.
+- **Endpoint**: `POST /auth/login`
+- **Content-Type**: `application/json`
 
 **Request Body:**
 ```json
 {
-  "email": "user@example.com",
-  "password": "yourpassword"
+  "email": "staf@example.com",
+  "password": "password123"
 }
 ```
 
-**Response (200 OK):**
+**Response:**
 ```json
 {
-    "status": "success",
-    "message": "Login successful",
-    "data": {
-        "access_token": "your_access_token",
-        "refresh_token": "your_refresh_token",
-        "token_type": "Bearer",
-        "expires_at": "2025-01-12T12:00:00Z",
-        "user": {
-            "id": 1,
-            "username": "testuser",
-            "email": "user@example.com",
-            "role": "staf"
-        }
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "access_token": "eyJhbGciOiJIUz...",
+    "expires_at": "2026-01-21T10:00:00Z",
+    "user": {
+      "id": 1,
+      "email": "staf@example.com",
+      "role": "staf"
     }
+  }
 }
 ```
 
-### POST /api/auth/register
+### Register User
+Pendaftaran pengguna baru (jika diizinkan publik, atau oleh admin).
 
-Registers a new user.
+- **Endpoint**: `POST /auth/register`
+- **Content-Type**: `application/json`
 
 **Request Body:**
 ```json
 {
-  "username": "newuser",
-  "first_name": "New",
-  "last_name": "User",
-  "email": "newuser@example.com",
-  "password": "newpassword",
+  "username": "budi_staf",
+  "email": "budi@example.com",
+  "password": "password123",
   "role": "staf",
-  "jabatan": "Staff"
-}
-```
-
-**Response (201 Created):**
-```json
-{
-    "status": "success",
-    "message": "User registered successfully",
-    "data": {
-        "id": 2,
-        "username": "newuser",
-        "email": "newuser@example.com",
-        "role": "staf"
-    }
+  "first_name": "Budi",
+  "last_name": "Santoso"
 }
 ```
 
 ---
 
-## File Upload
+## 2. Utility & Helpers
 
-### POST /api/upload
+### Get Available Verifiers
+Mendapatkan daftar user yang berhak memverifikasi surat (Manajer PKL atau Verifikator Eksternal) berdasarkan scope.
 
-Uploads a file and returns its path.
+- **Endpoint**: `GET /letters/verifiers`
+- **Query Params**:
+  - `scope`: `Internal` atau `Eksternal`
 
-**Request Body:**
-- `multipart/form-data` with a single file field named `file`.
+**Request Example:**
+`GET /api/letters/verifiers?scope=Eksternal`
 
-**Response (200 OK):**
+**Response:**
 ```json
 {
-    "status": "success",
-    "message": "File uploaded successfully",
-    "data": {
-        "file_path": "uploads/2025/01/unique-file-name.pdf"
+  "success": true,
+  "message": "List verifiers retrieved",
+  "data": [
+    {
+      "id": 5,
+      "username": "dosen_pembimbing",
+      "jabatan": "Dosen Pembimbing Lapangan"
     }
+  ]
 }
 ```
 
 ---
 
-## Surat Keluar (Outgoing Letters)
+## 3. Manajemen Surat Keluar (Outgoing)
 
-This workflow manages the creation, verification, and approval of outgoing letters.
+### Create Surat Keluar
+Membuat draft surat keluar baru.
 
-### Workflow
+- **Endpoint**: `POST /letters/keluar`
+- **Content-Type**: `multipart/form-data` **(WAJIB)**
+- **Akses**: Staf
 
-1.  **Staf:** Creates a `DRAFT` letter.
-2.  **Staf:** Submits the draft for verification, changing its status to `PERLU_VERIFIKASI`.
-3.  **Manajer:** Approves the letter (status becomes `PERLU_PERSETUJUAN`) or rejects it (status becomes `PERLU_REVISI`).
-4.  **Direktur:** Approves the letter (status becomes `DISETUJUI`) or rejects it (status becomes `PERLU_REVISI`).
-5.  **Staf:** Archives the approved letter (status becomes `DIARSIPKAN`).
+**Logika Bisnis Scope:**
+1. **Internal**: Jika `scope` = "Internal", backend otomatis menugaskan **Manajer PKL** sebagai verifikator. Field `assigned_verifier_id` diabaikan/kosongkan.
+2. **Eksternal**: Jika `scope` = "Eksternal", user **WAJIB** mengirim `assigned_verifier_id` (pilih dari list verifiers).
 
-### POST /api/letters/keluar
+**Form-Data Fields:**
 
-Creates a new outgoing letter (as a draft).
-**Required Role:** `staf`
+| Key | Type | Required | Deskripsi |
+| :--- | :--- | :--- | :--- |
+| `judul_surat` | Text | Yes | Judul atau perihal surat |
+| `nomor_surat` | Text | Yes | Nomor referensi surat |
+| `isi_surat` | Text | Yes | Ringkasan isi surat |
+| `pengirim` | Text | Yes | Nama pengirim |
+| `jenis_surat` | Text | Yes | Value: `keluar` |
+| `prioritas` | Text | Yes | Value: `biasa`, `segera`, atau `penting` |
+| `scope` | Text | Yes | Value: `Internal` atau `Eksternal` |
+| `assigned_verifier_id`| Number | Conditional | ID User Verifikator (Wajib jika Eksternal) |
+| `tanggal_surat` | Date | No | Format: YYYY-MM-DD |
+| `file` | File | Yes | File dokumen surat (PDF/Image) |
 
-**Request Body:**
+**Response:**
 ```json
 {
-  "nomor_surat": "SURAT/KELUAR/001",
-  "judul_surat": "Judul Surat Keluar",
-  "tujuan": "Tujuan Surat",
-  "isi_surat": "Isi dari surat keluar...",
-  "scope": "Internal",
-  "assigned_verifier_id": 2,
-  "file_path": "uploads/2025/01/file.pdf"
+  "success": true,
+  "message": "Surat keluar created successfully",
+  "data": {
+    "id": 10,
+    "status": "draft",
+    "file_path": "/uploads/surat_keluar/doc_10.pdf"
+  }
 }
 ```
 
-**Response (201 Created):**
+### Update / Revisi Surat Keluar
+Mengedit draft surat atau melakukan revisi jika status `perlu_revisi`.
+
+- **Endpoint**: `PUT /letters/keluar/:id`
+- **Content-Type**: `multipart/form-data`
+- **Akses**: Staf
+
+**Catatan Revisi File:**
+- User dapat mengupload file baru di field `file` untuk mengganti dokumen lama.
+- Jika field `file` dikosongkan, dokumen lama akan tetap digunakan.
+
+**Form-Data Fields:**
+(Sama seperti Create, semua field opsional kecuali yang ingin diubah).
+
+### Verify Surat (Approve/Reject)
+Proses verifikasi oleh Manajer (Internal) atau Verifikator (Eksternal).
+
+- **Endpoint Approve**: `POST /letters/keluar/:id/verify/approve`
+- **Endpoint Reject**: `POST /letters/keluar/:id/verify/reject`
+- **Akses**: Manajer / Verifikator
+
+**Request Body (JSON):**
 ```json
 {
-    "status": "success",
-    "message": "Surat keluar created successfully",
-    "data": {
-        "id": 1,
-        "status": "draft",
-        "judul_surat": "Judul Surat Keluar"
-    }
+  "catatan": "Dokumen sudah sesuai, lanjut ke direktur."
 }
 ```
 
-### PUT /api/letters/keluar/:id
+**Logika:**
+- **Approve**: Status berubah menjadi `perlu_persetujuan` (menunggu Direktur).
+- **Reject**: Status berubah menjadi `perlu_revisi` (kembali ke Staf).
 
-Updates a draft or a letter needing revision.
-**Required Role:** `staf`
+### Approve Surat (Finalisasi Direktur)
+Persetujuan akhir oleh Direktur.
 
-**Request Body:**
+- **Endpoint**: `POST /letters/keluar/:id/approve`
+- **Akses**: Direktur
+
+**Request Body (JSON):**
 ```json
 {
-  "judul_surat": "Judul Surat Keluar (Revisi)"
+  "catatan": "Disetujui, silakan kirim."
 }
 ```
 
-### POST /api/letters/keluar/:id/verify/approve
-
-Approves a letter for verification (Manajer).
-**Required Role:** `manajer`
-
-**Response (200 OK):**
-```json
-{
-    "status": "success",
-    "message": "Letter approved for verification",
-    "data": {
-        "id": 1,
-        "status": "perlu_persetujuan"
-    }
-}
-```
-
-### POST /api/letters/keluar/:id/approve
-
-Approves a letter (Direktur).
-**Required Role:** `direktur`
-
-**Response (200 OK):**
-```json
-{
-    "status": "success",
-    "message": "Letter approved successfully",
-    "data": {
-        "id": 1,
-        "status": "disetujui"
-    }
-}
-```
-
-### GET /api/letters/keluar/my
-
-Gets the dashboard for the current Staf user, showing their letters.
-**Required Role:** `staf`
-
-### GET /api/letters/keluar/need-verification
-
-Gets the dashboard for Manajer, showing letters that need verification.
-**Required Role:** `manajer`
-
-### GET /api/letters/keluar/need-approval
-
-Gets the dashboard for Direktur, showing letters that need approval.
-**Required Role:** `direktur`
+**Logika Baru:**
+- Aksi ini akan langsung mengubah status surat menjadi **DIARSIPKAN** (Final).
+- Melewati status 'Disetujui' karena dianggap proses surat keluar selesai saat ditandatangani/disetujui Direktur.
 
 ---
 
-## Surat Masuk (Incoming Letters)
+## 4. Manajemen Surat Masuk (Incoming)
 
-This workflow manages the registration and disposition of incoming letters.
+### Create Surat Masuk
+Mencatat surat yang diterima dari pihak luar.
 
-### Workflow
+- **Endpoint**: `POST /letters/masuk`
+- **Content-Type**: `multipart/form-data`
+- **Akses**: Staf
 
-1.  **Staf:** Registers an incoming letter. The status is set to `BELUM_DISPOSISI`.
-2.  **Direktur:** Adds disposition instructions to the letter. The status changes to `SUDAH_DISPOSISI`.
-3.  **Staf:** Archives the letter (status becomes `DIARSIPKAN`).
+**Form-Data Fields:**
 
-### POST /api/letters/masuk
+| Key | Type | Required | Deskripsi |
+| :--- | :--- | :--- | :--- |
+| `judul_surat` | Text | Yes | Perihal surat masuk |
+| `nomor_surat` | Text | Yes | Nomor surat dari pengirim |
+| `pengirim` | Text | Yes | Instansi/Orang pengirim |
+| `jenis_surat` | Text | Yes | Value: `masuk` |
+| `prioritas` | Text | Yes | Value: `biasa`, `segera`, atau `penting` |
+| `tanggal_masuk` | Date | Yes | Tanggal diterima (YYYY-MM-DD) |
+| `file` | File | Yes | Scan file surat masuk (PDF/Image) |
 
-Registers a new incoming letter.
-**Required Role:** `staf`
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Surat masuk recorded successfully",
+  "data": {
+    "id": 25,
+    "status": "belum_disposisi"
+  }
+}
+```
+
+### Disposisi Surat Masuk
+Direktur memberikan instruksi disposisi ke bawahan.
+
+- **Endpoint**: `POST /letters/masuk/:id/dispose`
+- **Content-Type**: `application/json`
+- **Akses**: Direktur
 
 **Request Body:**
 ```json
 {
-  "nomor_surat": "SURAT/MASUK/001",
-  "pengirim": "Pengirim Eksternal",
-  "judul_surat": "Judul Surat Masuk",
-  "tanggal_surat": "2025-01-10",
-  "tanggal_masuk": "2025-01-12",
-  "scope": "Eksternal",
-  "file_scan_path": "uploads/2025/01/scan.pdf",
-  "prioritas": "biasa",
-  "isi_surat": "Isi dari surat masuk..."
+  "disposisi": "Tindak lanjuti segera",
+  "bidang_tujuan": "Divisi TI",
+  "catatan": "Koordinasikan dengan Pak Budi"
 }
 ```
 
-**Response (201 Created):**
+**Response:**
 ```json
 {
-    "status": "success",
-    "message": "Surat masuk created successfully",
-    "data": {
-        "id": 2,
-        "status": "belum_disposisi",
-        "judul_surat": "Judul Surat Masuk"
-    }
+  "success": true,
+  "message": "Surat disposed successfully",
+  "data": {
+    "id": 25,
+    "status": "sudah_disposisi"
+  }
 }
 ```
-
-### POST /api/letters/masuk/:id/dispose
-
-Adds a disposition to an incoming letter.
-**Required Role:** `direktur`
-
-**Request Body:**
-```json
-{
-  "disposition": "Segera proses dan laporkan hasilnya.",
-  "disposition_user_ids": [3, 4]
-}
-```
-
-**Response (200 OK):**
-```json
-{
-    "status": "success",
-    "message": "Letter disposition added successfully",
-    "data": {
-        "id": 2,
-        "status": "sudah_disposisi"
-    }
-}
-```
-
-### GET /api/letters/masuk/need-disposition
-
-Gets the dashboard for Direktur, showing letters that need disposition.
-**Required Role:** `direktur`
-
----
-
-## Common Letter Endpoints
-
-### GET /api/letters/:id
-
-Gets the details of any letter by its ID. Access is determined by user role and letter state.
-
-### DELETE /api/letters/:id
-
-Soft deletes a letter. Access is restricted.
-
----
-
-## Admin
-
-Endpoints under `/api/admin/users/*` are available for managing users. These are restricted to users with the `admin` role.
-
-## User Settings
-
-Endpoints under `/api/settings/*` are available for users to manage their own settings, such as changing their password.

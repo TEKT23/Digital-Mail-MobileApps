@@ -1,68 +1,65 @@
-# Document Workflows
+# Alur Kerja Dokumen (Workflow)
 
-This document describes the lifecycle and workflows for different types of letters within the Sistem Penyuratan Digital.
+Dokumen ini menjelaskan siklus hidup dan alur kerja untuk berbagai jenis surat dalam Sistem Penyuratan Digital, yang telah disesuaikan dengan prosedur operasional organisasi saat ini.
 
-## 1. Workflow Surat Keluar (Outgoing Letter)
+## 1. Alur Surat Keluar (Outgoing Letter)
 
-This workflow involves three main roles: **Staf**, **Manajer**, and **Direktur**. It is designed to ensure that every outgoing letter is properly drafted, verified, and approved before being finalized.
+Alur kerja ini dibagi berdasarkan **Lingkup (Scope)** surat: **Internal** dan **Eksternal**.
 
-### Roles & Responsibilities
+### Peran & Tanggung Jawab
 
--   **Staf:** Responsible for drafting the initial letter, making revisions, and archiving the final version.
--   **Manajer:** Responsible for verifying the content and format of the letter drafted by the Staf.
--   **Direktur:** Responsible for giving the final approval for the letter.
+-   **Staf Program:** Membuat surat keluar dengan lingkup **Eksternal**.
+-   **Staf Lembaga:** Membuat surat keluar dengan lingkup **Internal**.
+-   **Manajer KPP / Pemas:** Memverifikasi surat **Eksternal** (Dipilih secara manual oleh Staf Program saat pembuatan surat).
+-   **Manajer PKL:** Memverifikasi surat **Internal** (Ditugaskan secara **OTOMATIS** oleh sistem).
+-   **Direktur:** Memberikan persetujuan akhir (Tanda tangan).
 
-### Status Lifecycle
+### Siklus Status (Lifecycle)
 
-The status of an outgoing letter changes as it moves through the workflow:
-
-1.  **`DRAFT`**
-    -   A Staf creates a new letter. It is in a draft state and can be edited freely.
-    -   **Action:** Staf submits the letter for verification.
+1.  **`DRAFT` / `PERLU_VERIFIKASI`**
+    -   **Aksi:** Staf mengunggah surat (PDF/Gambar) dan mengisi data.
+    -   **Logika Sistem:**
+        -   Jika Lingkup **Eksternal**: Staf Program *wajib* memilih Verifikator (Manajer KPP atau Pemas).
+        -   Jika Lingkup **Internal**: Sistem secara **otomatis** menugaskan Manajer PKL.
+    -   Status langsung menjadi `PERLU_VERIFIKASI` setelah surat dibuat.
 
 2.  **`PERLU_VERIFIKASI`**
-    -   The letter is now in the Manajer's queue, awaiting verification.
-    -   **Action (Manajer):**
-        -   **Approve:** The letter is verified and moves to the next stage.
-        -   **Reject:** The letter needs changes and is sent back to the Staf.
+    -   Surat berada dalam antrean Manajer yang ditugaskan.
+    -   **Aksi (Manajer):**
+        -   **Setujui (Verify):** Status berubah menjadi `PERLU_PERSETUJUAN`.
+        -   **Tolak (Reject):** Status berubah menjadi `PERLU_REVISI` (Mengembalikan ke Staf).
 
-3.  **`PERLU_REVISI`** (from Verification or Approval)
-    -   The letter has been rejected by either the Manajer or Direktur and is returned to the Staf for modification.
-    -   **Action (Staf):** After making revisions, the Staf resubmits the letter, and its status returns to `PERLU_VERIFIKASI`.
+3.  **`PERLU_REVISI`**
+    -   Surat telah ditolak dan dikembalikan ke Staf pembuat.
+    -   **Aksi (Staf):** Staf memperbaiki data atau **mengunggah ulang** file surat yang telah diperbaiki. Setelah disimpan, status kembali menjadi `PERLU_VERIFIKASI`.
 
 4.  **`PERLU_PERSETUJUAN`**
-    -   The letter has been verified by the Manajer and is now in the Direktur's queue for final approval.
-    -   **Action (Direktur):**
-        -   **Approve:** The letter is officially approved.
-        -   **Reject:** The letter needs changes and is sent back to the Staf with a status of `PERLU_REVISI`.
+    -   Surat telah diverifikasi oleh Manajer dan kini berada di antrean Direktur.
+    -   **Aksi (Direktur):**
+        -   **Setujui (Approve):** Surat disetujui. **Sistem secara OTOMATIS mengubah status menjadi `DIARSIPKAN`**.
+        -   **Tolak (Reject):** Status berubah menjadi `PERLU_REVISI`.
 
-5.  **`DISETUJUI`**
-    -   The letter has received final approval from the Direktur.
-    -   **Action (Staf):** The Staf archives the letter.
-
-6.  **`DIARSIPKAN`**
-    -   The workflow is complete. The letter is now a final record and cannot be edited.
+5.  **`DIARSIPKAN`** (Final)
+    -   Alur kerja selesai. Surat dianggap sah dan tersimpan sebagai arsip. Notifikasi dikirimkan kepada Staf pembuat bahwa surat telah final.
 
 ---
 
-## 2. Workflow Surat Masuk (Incoming Letter)
+## 2. Alur Surat Masuk (Incoming Letter)
 
-This workflow is simpler and involves two main roles: **Staf** and **Direktur**. It is designed to efficiently register and process all incoming letters.
+### Peran & Tanggung Jawab
 
-### Roles & Responsibilities
+-   **Staf Lembaga:** Mencatat (registrasi) semua surat yang masuk.
+-   **Direktur:** Memeriksa surat dan memberikan disposisi.
 
--   **Staf:** Responsible for registering new incoming letters and archiving them after disposition.
--   **Direktur:** Responsible for reviewing incoming letters and providing disposition instructions.
-
-### Status Lifecycle
+### Siklus Status (Lifecycle)
 
 1.  **`BELUM_DISPOSISI`**
-    -   A Staf registers a new incoming letter. It is now in the Direktur's queue, awaiting disposition.
-    -   **Action:** The Direktur reviews the letter and adds a disposition.
+    -   Staf Lembaga mencatat surat masuk baru beserta lampiran scan-nya.
+    -   **Aksi:** Direktur menerima notifikasi, memeriksa surat, dan memberikan instruksi disposisi.
 
 2.  **`SUDAH_DISPOSISI`**
-    -   The Direktur has provided instructions for the letter.
-    -   **Action:** The Staf archives the letter.
+    -   Direktur telah memberikan instruksi disposisi (Tujuan & Catatan).
+    -   **Aksi:** Staf Lembaga menindaklanjuti disposisi tersebut (misalnya: mengarsipkan atau membuat surat balasan).
 
 3.  **`DIARSIPKAN`**
-    -   The workflow is complete. The letter and its disposition are saved as a final record.
+    -   Status akhir untuk pencatatan arsip.
