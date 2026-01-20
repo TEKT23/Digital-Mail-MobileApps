@@ -1,11 +1,16 @@
 package handlers
 
 import (
+	"TugasAkhir/dto/letters"
 	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 	"TugasAkhir/services"
 	"TugasAkhir/utils" // Imported for response helpers
 	"TugasAkhir/utils/events"
+	"TugasAkhir/utils/storage"
+	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -31,76 +36,130 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		return utils.Unauthorized(c, "Unauthorized")
 	}
 
-	// Request Body
-	var req struct {
-		NomorSurat   string `json:"nomor_surat"`
-		Pengirim     string `json:"pengirim"`
-		Judul        string `json:"judul_surat"`
-		TanggalSurat string `json:"tanggal_surat"` // Format YYYY-MM-DD
-		TanggalMasuk string `json:"tanggal_masuk"` // Format YYYY-MM-DD
-		Scope        string `json:"scope"`
-		FileScanPath string `json:"file_scan_path"`
-		Prioritas    string `json:"prioritas"`
-		IsiRingkas   string `json:"isi_surat"`
-	}
-
+	// 1. Parsing Form Data (DTO)
+	var req letters.CreateLetterMasukRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.BadRequest(c, "Invalid request body", nil)
+		return utils.BadRequest(c, "Invalid request body", err.Error())
 	}
 
-	// 1. Cek Permission (Internal vs Eksternal)
+	// 2. Validasi Input
+	if errMap := req.Validate(); len(errMap) > 0 {
+		return utils.BadRequest(c, "Validasi gagal", errMap)
+	}
+
+	// 3. Cek Permission
 	canCreate, _ := h.permService.CanUserCreateLetter(user, req.Scope, models.LetterMasuk)
 	if !canCreate {
 		return utils.Forbidden(c, "Anda tidak memiliki izin mencatat surat masuk")
 	}
 
-	// Helper parsing tanggal
-	var tglSurat, tglMasuk *time.Time
-	if req.TanggalSurat != "" {
-		if t, err := time.Parse("2006-01-02", req.TanggalSurat); err == nil {
-			tglSurat = &t
-		}
-	}
-	if req.TanggalMasuk != "" {
-		if t, err := time.Parse("2006-01-02", req.TanggalMasuk); err == nil {
-			tglMasuk = &t
-		}
+	// 4. Handle File Upload
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return utils.BadRequest(c, "File surat wajib diunggah", nil)
 	}
 
-	// 2. Buat Object Surat
-	letter := models.Letter{
-		NomorSurat:   req.NomorSurat,
-		Pengirim:     req.Pengirim,
-		JudulSurat:   req.Judul,
-		JenisSurat:   models.LetterMasuk,
-		Scope:        req.Scope,
-		Status:       models.StatusBelumDisposisi, // Langsung ke status ini (Siap Disposisi)
-		CreatedByID:  user.ID,
-		FilePath:     req.FileScanPath,
-		Prioritas:    models.Priority(req.Prioritas),
-		IsiSurat:     req.IsiRingkas,
-		TanggalSurat: tglSurat,
-		TanggalMasuk: tglMasuk,
-		// AssignedVerifierID: nil (Surat Masuk tidak butuh verifikator)
+	// Validasi Ekstensi
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+		return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
 	}
 
-	// Default prioritas
-	if letter.Prioritas == "" {
-		letter.Prioritas = models.PriorityBiasa
+	// Upload ke Storage
+	filename := fmt.Sprintf("surat/masuk_%d%s", time.Now().UnixNano(), ext)
+	uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal mengupload file ke server")
 	}
+
+	// 5. Mapping ke Model
+	letter := req.ToModel(user.ID, uploadedPath)
+	letter.JenisSurat = models.LetterMasuk
+	// Status default 'belum_disposisi' sudah di-set di mapper, tapi force set disini agar jelas
+	letter.Status = models.StatusBelumDisposisi
 
 	if err := h.db.Create(&letter).Error; err != nil {
 		return utils.InternalServerError(c, "Gagal mencatat surat masuk")
 	}
 
-	// 3. Kirim Notifikasi (Event Bus)
-	// utils/fcm akan menangkap ini dan mengirim notif ke DIREKTUR
+	// 6. Kirim Notifikasi
 	events.LetterEventBus <- events.LetterEvent{
 		Type:   events.LetterCreated,
 		Letter: letter,
 	}
 
 	return utils.Created(c, "Surat masuk berhasil dicatat dan dikirim ke Direktur", letter)
+}
+
+// UpdateSuratMasuk - Staf edit surat masuk (hanya jika belum diarsip/disposisi final)
+func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
+	user, err := middleware.GetUserFromContext(c)
+	if err != nil {
+		return utils.Unauthorized(c, "Unauthorized")
+	}
+
+	letterID, _ := c.ParamsInt("id")
+	letter, err := h.permService.GetLetterByID(uint(letterID))
+	if err != nil {
+		return utils.NotFound(c, "Surat tidak ditemukan")
+	}
+
+	// Cek Kepemilikan (Hanya pembuat yang boleh edit)
+	if letter.CreatedByID != user.ID {
+		return utils.Forbidden(c, "Anda tidak berhak mengedit surat ini")
+	}
+
+	// Cek Status (Boleh edit selama belum Diarsipkan)
+	// Jika sudah didisposisi, mungkin user ingin update kesalahan data minor?
+	// Untuk aman: Hanya boleh edit jika StatusBelumDisposisi
+	if letter.Status != models.StatusBelumDisposisi {
+		return utils.Conflict(c, "Surat yang sudah didisposisi tidak dapat diedit")
+	}
+
+	// Parsing Request
+	var req letters.UpdateLetterMasukRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.BadRequest(c, "Invalid request body", err.Error())
+	}
+	if errMap := req.Validate(); len(errMap) > 0 {
+		return utils.BadRequest(c, "Validasi gagal", errMap)
+	}
+
+	// Apply Update Metadata
+	letters.ApplyUpdateMasuk(letter, &req)
+
+	// Handle File Upload (Optional Replace)
+	fileHeader, err := c.FormFile("file")
+	if err == nil {
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+			return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
+		}
+		filename := fmt.Sprintf("surat/masuk_%d%s", time.Now().UnixNano(), ext)
+		uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
+		if err != nil {
+			return utils.InternalServerError(c, "Gagal mengupload file revisi")
+		}
+		letter.FilePath = uploadedPath
+	}
+
+	h.db.Save(letter)
+	return utils.OK(c, "Surat masuk berhasil diperbarui", letter)
+}
+
+// GetMySuratMasuk - List surat masuk buatan saya
+func (h *LetterMasukHandler) GetMySuratMasuk(c *fiber.Ctx) error {
+	user, err := middleware.GetUserFromContext(c)
+	if err != nil {
+		return utils.Unauthorized(c, "Unauthorized")
+	}
+
+	var letters []models.Letter
+	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterMasuk).
+		Order("created_at DESC").
+		Find(&letters)
+
+	return utils.OK(c, "List surat masuk saya berhasil diambil", letters)
 }
 
 // DisposeSuratMasuk - Direktur memberikan instruksi disposisi

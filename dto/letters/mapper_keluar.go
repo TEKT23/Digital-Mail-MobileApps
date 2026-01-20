@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (r *CreateLetterRequest) ToModel() models.Letter {
+func (r *CreateLetterKeluarRequest) ToModel() models.Letter {
 	letter := models.Letter{
 		Pengirim:     strings.TrimSpace(r.Pengirim),
 		NomorSurat:   strings.TrimSpace(r.NomorSurat),
@@ -20,6 +20,7 @@ func (r *CreateLetterRequest) ToModel() models.Letter {
 		JudulSurat:   strings.TrimSpace(r.JudulSurat),
 		Kesimpulan:   strings.TrimSpace(r.Kesimpulan),
 		FilePath:     strings.TrimSpace(r.FilePath),
+		Scope:        strings.TrimSpace(r.Scope), // [FIX] Added Scope
 		Status:       r.Status,
 		// Fix: CreatedByID di model sekarang uint (bukan pointer)
 		VerifiedByID: r.VerifiedByID,
@@ -42,7 +43,7 @@ func (r *CreateLetterRequest) ToModel() models.Letter {
 	return letter
 }
 
-func ApplyUpdate(letter *models.Letter, req *UpdateLetterRequest) {
+func ApplyUpdate(letter *models.Letter, req *UpdateLetterKeluarRequest) {
 	if letter == nil || req == nil {
 		return
 	}

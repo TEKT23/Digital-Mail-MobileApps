@@ -7,7 +7,8 @@ import (
 	"TugasAkhir/models"
 )
 
-type CreateLetterRequest struct {
+// CreateLetterKeluarRequest - Req khusus untuk surat keluar
+type CreateLetterKeluarRequest struct {
 	// Tambahkan tag `form` di sebelah tag `json`
 	Pengirim         string            `json:"pengirim" form:"pengirim"`
 	NomorSurat       string            `json:"nomor_surat" form:"nomor_surat"`
@@ -40,7 +41,7 @@ type CreateLetterRequest struct {
 	AssignedVerifierID *uint `json:"assigned_verifier_id" form:"assigned_verifier_id"`
 }
 
-type UpdateLetterRequest struct {
+type UpdateLetterKeluarRequest struct {
 	Pengirim         *string              `json:"pengirim" form:"pengirim"`
 	NomorSurat       *string              `json:"nomor_surat" form:"nomor_surat"`
 	NomorAgenda      *string              `json:"nomor_agenda" form:"nomor_agenda"`
@@ -63,7 +64,7 @@ type UpdateLetterRequest struct {
 	AssignedVerifierID *uint `json:"assigned_verifier_id" form:"assigned_verifier_id"`
 }
 
-func (r *CreateLetterRequest) Validate() map[string]string {
+func (r *CreateLetterKeluarRequest) Validate() map[string]string {
 	errors := make(map[string]string)
 
 	if strings.TrimSpace(r.Pengirim) == "" {
@@ -90,7 +91,7 @@ func (r *CreateLetterRequest) Validate() map[string]string {
 	return errors
 }
 
-func (r *UpdateLetterRequest) Validate() map[string]string {
+func (r *UpdateLetterKeluarRequest) Validate() map[string]string {
 	errors := make(map[string]string)
 
 	if r.JenisSurat != nil && !isValidLetterType(*r.JenisSurat) {

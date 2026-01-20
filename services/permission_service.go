@@ -71,8 +71,11 @@ func (ps *PermissionService) CanUserVerifyLetter(user *models.User, letter *mode
 	}
 
 	// 3. Verifier ID cocok (jika ada)
-	if letter.AssignedVerifierID != nil && *letter.AssignedVerifierID != user.ID {
-		return false, nil
+	// Pointer harus dideference dengan hati-hati
+	if letter.AssignedVerifierID != nil {
+		if *letter.AssignedVerifierID != user.ID {
+			return false, nil
+		}
 	}
 
 	// 4. Status harus perlu_verifikasi

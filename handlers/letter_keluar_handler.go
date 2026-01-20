@@ -46,7 +46,7 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 
 	// 2. Parsing Form Data (Text Fields)
 	// Fiber akan mencocokkan field form-data dengan tag `form:"..."` di struct DTO
-	var req letters.CreateLetterRequest
+	var req letters.CreateLetterKeluarRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "Format data tidak valid", err.Error())
 	}
@@ -164,7 +164,7 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 	oldStatus := letter.Status
 
 	// 4. Parsing Form Data (Gunakan UpdateLetterRequest dari DTO)
-	var req letters.UpdateLetterRequest
+	var req letters.UpdateLetterKeluarRequest
 	if err := c.BodyParser(&req); err != nil {
 		return utils.BadRequest(c, "Format data tidak valid", err.Error())
 	}

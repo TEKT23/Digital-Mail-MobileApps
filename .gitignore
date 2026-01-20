@@ -2,3 +2,21 @@
 config/database.go
 digimail-mobile-firebase-adminsdk-fbsvc-77c65bbf85.json
 .env
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+main
+debug
+test
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/

@@ -16,14 +16,14 @@ const (
 
 type User struct {
 	gorm.Model
-	Username     string `gorm:"type:varchar(100);uniqueIndex;not null"`
-	FirstName    string `gorm:"type:varchar(100)"`
-	LastName     string `gorm:"type:varchar(100)"`
-	Email        string `gorm:"type:varchar(191);uniqueIndex;not null"`
-	PasswordHash string `gorm:"type:varchar(255);not null"`
-	Role         Role   `gorm:"type:enum('admin','direktur','staf_program','staf_lembaga','manajer_kpp','manajer_pemas','manajer_pkl');not null;index"`
-	Jabatan      string `gorm:"type:varchar(150)"`
-	Atribut      string `gorm:"type:text"`
+	Username     string `gorm:"type:varchar(100);uniqueIndex;not null" json:"username"`
+	FirstName    string `gorm:"type:varchar(100)" json:"first_name"`
+	LastName     string `gorm:"type:varchar(100)" json:"last_name"`
+	Email        string `gorm:"type:varchar(191);uniqueIndex;not null" json:"email"` // Email Boleh ditampilkan untuk kontak, tapi Password JANGAN
+	PasswordHash string `gorm:"type:varchar(255);not null" json:"-"`                 // [FIX] Hide PasswordHash
+	Role         Role   `gorm:"type:enum('admin','direktur','staf_program','staf_lembaga','manajer_kpp','manajer_pemas','manajer_pkl');not null;index" json:"role"`
+	Jabatan      string `gorm:"type:varchar(150)" json:"jabatan"`
+	Atribut      string `gorm:"type:text" json:"atribut"`
 }
 
 func (User) TableName() string {

@@ -80,7 +80,9 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	// --- C. WORKFLOW SURAT MASUK ---
 
 	// 1. Aksi STAF
+	letters.Get("/masuk/my", middleware.RequireStaf(), lmHandler.GetMySuratMasuk) // [NEW] List Surat Masuk Saya
 	letters.Post("/masuk", middleware.RequireStaf(), lmHandler.CreateSuratMasuk)
+	letters.Put("/masuk/:id", middleware.RequireStaf(), lmHandler.UpdateSuratMasuk) // [NEW] Edit Surat Masuk
 	letters.Post("/masuk/:id/archive", middleware.RequireStaf(), lmHandler.ArchiveSuratMasuk)
 
 	// 2. Dashboard & Aksi DIREKTUR (Disposisi)
