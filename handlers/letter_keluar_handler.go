@@ -63,11 +63,16 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat keluar dengan scope ini")
 	}
 
+	// Tentukan mode: Draft atau Submit berdasarkan field Status
+	// Jika Status kosong atau "draft" → mode draft
+	// Jika Status "perlu_verifikasi" → mode submit
+	isDraftMode := req.Status == "" || req.Status == models.StatusDraft
+
 	// 5. Handle File Upload (Wajib HANYA jika bukan draft)
 	var uploadedPath string
 	fileHeader, err := c.FormFile("file") // "file" adalah key di form-data
 
-	if req.IsDraft {
+	if isDraftMode {
 		// MODE DRAFT: File opsional
 		if err == nil {
 			// User upload file meskipun draft
@@ -100,7 +105,7 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	// 6. Logic Penentuan Verifikator (Auto-Assign vs Manual) - HANYA jika bukan draft
 	var verifierID *uint
 
-	if !req.IsDraft {
+	if !isDraftMode {
 		if strings.EqualFold(req.Scope, models.ScopeInternal) {
 			// === LOGIC OTOMATIS (Internal) ===
 			// Sistem mencari sendiri siapa Manajer PKL-nya
@@ -125,7 +130,7 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	letter.JenisSurat = models.LetterKeluar
 
 	// Set status berdasarkan mode
-	if req.IsDraft {
+	if isDraftMode {
 		letter.Status = models.StatusDraft
 	} else {
 		// Status langsung ke 'perlu_verifikasi' karena file sudah ada & verifikator sudah ditentukan
@@ -147,7 +152,7 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 	}
 
 	// 9. Kirim Event Notifikasi (HANYA jika bukan draft)
-	if !req.IsDraft {
+	if !isDraftMode {
 		// Kita perlu preload data verifier (nama/role) agar notifikasi di consumer lengkap
 		h.db.Preload("AssignedVerifier").First(&letter, letter.ID)
 

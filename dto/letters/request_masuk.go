@@ -16,8 +16,8 @@ type CreateLetterMasukRequest struct {
 	Prioritas    string `json:"prioritas" form:"prioritas"`
 	IsiSurat     string `json:"isi_surat" form:"isi_surat"`
 
-	// IsDraft: true = simpan sebagai draft, false/kosong = langsung kirim ke Direktur
-	IsDraft bool `json:"is_draft" form:"is_draft"`
+	// Status: kosong/"draft" = simpan sebagai draft, "belum_disposisi" = kirim ke Direktur
+	Status models.LetterStatus `json:"status" form:"status"`
 
 	// Note: FilePath di-handle handler
 }
@@ -33,8 +33,8 @@ type UpdateLetterMasukRequest struct {
 	Prioritas    *string `json:"prioritas" form:"prioritas"`
 	IsiSurat     *string `json:"isi_surat" form:"isi_surat"`
 
-	// SubmitDraft: true = submit draft ke Direktur, false = tetap simpan sebagai draft
-	SubmitDraft bool `json:"submit_draft" form:"submit_draft"`
+	// Status: "belum_disposisi" = submit draft ke Direktur
+	Status *models.LetterStatus `json:"status" form:"status"`
 }
 
 func (r *CreateLetterMasukRequest) Validate() map[string]string {

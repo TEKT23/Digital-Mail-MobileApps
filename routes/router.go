@@ -25,8 +25,6 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	auth.Post("/logout", handlers.Logout)
 	auth.Post("/forgot-password", handlers.RequestPasswordReset)
 	auth.Post("/reset-password", handlers.ResetPassword)
-	auth.Post("/forgot-password", handlers.RequestPasswordReset)
-	auth.Post("/reset-password", handlers.ResetPassword)
 
 	// 3. MIDDLEWARE & UTILITY
 	api.Use(middleware.RequireAuth())
@@ -43,57 +41,46 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	// 5. MANAJEMEN SURAT (Group: /api/letters)
 	letters := api.Group("/letters")
 
-	// --- A. COMMON ROUTES
-	// Melihat Detail Surat
-
-	// 1. Helper untuk Form (List Manajer)
+	// --- A. HELPER ROUTES (must be before :id routes) ---
 	letters.Get("/verifiers", lkHandler.GetAvailableVerifiers)
-
-	letters.Get("/:id", commonHandler.GetLetterByID)
-
-	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
-	letters.Delete("/:id", commonHandler.DeleteLetter)
 
 	// --- B. WORKFLOW SURAT KELUAR ---
 
-	// 2. Dashboard & Aksi STAF
+	// Dashboard & Aksi STAF
 	letters.Get("/keluar/my", middleware.RequireStaf(), lkHandler.GetMyLetters)
-	// Buat Surat Baru
 	letters.Post("/keluar", middleware.RequireStaf(), lkHandler.CreateSuratKeluar)
-	// Edit Draft / Revisi (Handler Baru: UpdateDraftLetter)
 	letters.Put("/keluar/:id", middleware.RequireStaf(), lkHandler.UpdateDraftLetter)
-	// Arsipkan Surat (Finalisasi)
 	letters.Post("/keluar/:id/archive", middleware.RequireStaf(), lkHandler.ArchiveLetter)
 
-	// 3. Dashboard & Aksi MANAJER
+	// Dashboard & Aksi MANAJER
 	letters.Get("/keluar/need-verification", middleware.RequireManajer(), lkHandler.GetLettersNeedVerification)
-	// Eksekusi Verifikasi
 	letters.Post("/keluar/:id/verify/approve", middleware.RequireManajer(), lkHandler.VerifyLetterApprove)
 	letters.Post("/keluar/:id/verify/reject", middleware.RequireManajer(), lkHandler.VerifyLetterReject)
 
-	// 4. Dashboard & Aksi DIREKTUR
+	// Dashboard & Aksi DIREKTUR
 	letters.Get("/keluar/need-approval", middleware.RequireDirektur(), lkHandler.GetLettersNeedApproval)
-	// Eksekusi Approval
+	letters.Get("/keluar/my-approvals", middleware.RequireDirektur(), lkHandler.GetMyApprovals)
 	letters.Post("/keluar/:id/approve", middleware.RequireDirektur(), lkHandler.ApproveLetterByDirektur)
 	letters.Post("/keluar/:id/reject", middleware.RequireDirektur(), lkHandler.RejectLetterByDirektur)
-	// Riwayat surat keluar yang sudah disetujui
-	letters.Get("/keluar/my-approvals", middleware.RequireDirektur(), lkHandler.GetMyApprovals)
 
 	// --- C. WORKFLOW SURAT MASUK ---
 
-	// 1. Aksi STAF
-	letters.Get("/masuk/my", middleware.RequireStaf(), lmHandler.GetMySuratMasuk) // [NEW] List Surat Masuk Saya
+	// Aksi STAF
+	letters.Get("/masuk/my", middleware.RequireStaf(), lmHandler.GetMySuratMasuk)
 	letters.Post("/masuk", middleware.RequireStaf(), lmHandler.CreateSuratMasuk)
-	letters.Put("/masuk/:id", middleware.RequireStaf(), lmHandler.UpdateSuratMasuk) // [NEW] Edit Surat Masuk
+	letters.Put("/masuk/:id", middleware.RequireStaf(), lmHandler.UpdateSuratMasuk)
 	letters.Post("/masuk/:id/archive", middleware.RequireStaf(), lmHandler.ArchiveSuratMasuk)
 
-	// 2. Dashboard & Aksi DIREKTUR (Disposisi)
-	// Get surat masuk yang BELUM DISPOSISI
+	// Dashboard & Aksi DIREKTUR (Disposisi)
 	letters.Get("/masuk/need-disposition", middleware.RequireDirektur(), lmHandler.GetLettersMasukForDisposition)
-	// Eksekusi Disposisi
-	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
-	// Riwayat surat masuk yang sudah didisposisi
 	letters.Get("/masuk/my-dispositions", middleware.RequireDirektur(), lmHandler.GetMyDispositions)
+	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
+
+	// --- D. GENERIC ROUTES (must be LAST to avoid catching specific routes) ---
+	// Melihat Detail Surat (any letter by ID)
+	letters.Get("/:id", commonHandler.GetLetterByID)
+	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
+	letters.Delete("/:id", commonHandler.DeleteLetter)
 
 	// 6. ADMIN ZONE
 	admin := api.Group("/admin", middleware.RequireAdmin())

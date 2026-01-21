@@ -53,11 +53,16 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		return utils.Forbidden(c, "Anda tidak memiliki izin mencatat surat masuk")
 	}
 
+	// Tentukan mode: Draft atau Submit berdasarkan field Status
+	// Jika Status kosong atau "draft" → mode draft
+	// Jika Status "belum_disposisi" → mode submit (kirim ke Direktur)
+	isDraftMode := req.Status == "" || req.Status == models.StatusDraft
+
 	// 4. Handle File Upload (Wajib HANYA jika bukan draft)
 	var uploadedPath string
 	fileHeader, err := c.FormFile("file")
 
-	if req.IsDraft {
+	if isDraftMode {
 		// MODE DRAFT: File opsional
 		if err == nil {
 			// User upload file meskipun draft
@@ -92,7 +97,7 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	letter.JenisSurat = models.LetterMasuk
 
 	// Set status berdasarkan mode
-	if req.IsDraft {
+	if isDraftMode {
 		letter.Status = models.StatusDraft
 	} else {
 		// Status langsung ke 'belum_disposisi' untuk dikirim ke Direktur
@@ -104,7 +109,7 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 	}
 
 	// 6. Kirim Notifikasi (HANYA jika bukan draft)
-	if !req.IsDraft {
+	if !isDraftMode {
 		events.LetterEventBus <- events.LetterEvent{
 			Type:   events.LetterCreated,
 			Letter: letter,
@@ -167,8 +172,10 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 		letter.FilePath = uploadedPath
 	}
 
-	// Jika submit_draft = true, validasi file dan ubah status
-	if req.SubmitDraft && letter.Status == models.StatusDraft {
+	// Jika status dikirim "belum_disposisi" DAN surat masih draft, maka ini adalah submission
+	isSubmitting := req.Status != nil && *req.Status == models.StatusBelumDisposisi
+
+	if isSubmitting && letter.Status == models.StatusDraft {
 		// File wajib ada untuk submit
 		if letter.FilePath == "" {
 			return utils.BadRequest(c, "File surat wajib diunggah untuk mengirim surat", nil)

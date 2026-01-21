@@ -27,6 +27,7 @@ type CreateLetterKeluarRequest struct {
 	// FilePath tidak perlu `form` karena akan diisi manual oleh handler setelah upload sukses
 	FilePath string `json:"file_path"`
 
+	// Status: kosong/"draft" = simpan sebagai draft, "perlu_verifikasi" = kirim ke Manajer
 	Status models.LetterStatus `json:"status" form:"status"`
 
 	// Gunakan pointer agar opsional, tambahkan form tag
@@ -39,9 +40,6 @@ type CreateLetterKeluarRequest struct {
 
 	// Khusus Verifier ID (User input dari dropdown)
 	AssignedVerifierID *uint `json:"assigned_verifier_id" form:"assigned_verifier_id"`
-
-	// IsDraft: true = simpan sebagai draft, false/kosong = langsung kirim ke verifikator
-	IsDraft bool `json:"is_draft" form:"is_draft"`
 }
 
 type UpdateLetterKeluarRequest struct {
