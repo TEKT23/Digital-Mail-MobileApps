@@ -59,7 +59,7 @@ func UploadFile(ctx context.Context, fileHeader *multipart.FileHeader, key strin
 		Body:        file,
 		ContentType: aws.String(fileHeader.Header.Get("Content-Type")),
 		// Pastikan file tidak dapat diakses publik tanpa Presigned URL
-		ACL: types.ObjectCannedACLPrivate,
+		ACL: types.ObjectCannedACLPublicRead,
 	}
 
 	_, err = uploader.Upload(ctx, uploadInput)

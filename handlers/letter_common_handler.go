@@ -4,6 +4,7 @@ import (
 	"TugasAkhir/middleware"
 	"TugasAkhir/models"
 	"TugasAkhir/services"
+	"TugasAkhir/utils/storage"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -40,6 +41,15 @@ func (h *LetterCommonHandler) GetLetterByID(c *fiber.Ctx) error {
 	canView, _ := h.permService.CanUserViewLetter(user, &letter)
 	if !canView {
 		return c.Status(403).JSON(fiber.Map{"error": "Anda tidak memiliki akses melihat surat ini"})
+	}
+
+	// [FIX] Generate Presigned URL agar gambar bisa dibuka di frontend
+	// Meskipun bucket public, URL lengkap tetap dibutuhkan
+	if letter.FilePath != "" {
+		url, err := storage.GetPresignedURL(letter.FilePath)
+		if err == nil {
+			letter.FilePath = url
+		}
 	}
 
 	return c.JSON(fiber.Map{"success": true, "data": letter})
