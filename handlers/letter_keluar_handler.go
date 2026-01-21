@@ -160,9 +160,11 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 			Type:   events.LetterCreated,
 			Letter: letter,
 		}
+		AddPresignedURLToLetter(&letter)
 		return utils.Created(c, "Surat keluar berhasil dibuat dan diteruskan ke Verifikator", letter)
 	}
 
+	AddPresignedURLToLetter(&letter)
 	return utils.Created(c, "Draft surat berhasil disimpan", letter)
 }
 
@@ -289,6 +291,7 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 		}
 	}
 
+	AddPresignedURLToLetter(letter)
 	return utils.OK(c, "Surat berhasil diperbarui dan diajukan kembali", letter)
 }
 
@@ -475,6 +478,7 @@ func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
 	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).Order("updated_at DESC").Find(&letters)
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "List surat saya berhasil diambil", letters)
 }
 
@@ -488,6 +492,7 @@ func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
 		Order("created_at ASC").
 		Find(&letters)
 
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "List surat perlu verifikasi berhasil diambil", letters)
 }
 
@@ -495,6 +500,7 @@ func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
 func (h *LetterKeluarHandler) GetLettersNeedApproval(c *fiber.Ctx) error {
 	var letters []models.Letter
 	h.db.Where("status = ? AND jenis_surat = ?", models.StatusPerluPersetujuan, models.LetterKeluar).Preload("CreatedBy").Preload("VerifiedBy").Order("created_at ASC").Find(&letters)
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "List surat perlu persetujuan berhasil diambil", letters)
 }
 
@@ -510,5 +516,6 @@ func (h *LetterKeluarHandler) GetMyApprovals(c *fiber.Ctx) error {
 		Order("updated_at DESC").
 		Find(&letters)
 
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "Riwayat surat keluar yang sudah disetujui", letters)
 }

@@ -13,7 +13,6 @@ import (
 	aws_config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 var s3Client *s3.Client
@@ -58,8 +57,6 @@ func UploadFile(ctx context.Context, fileHeader *multipart.FileHeader, key strin
 		Key:         aws.String(key),
 		Body:        file,
 		ContentType: aws.String(fileHeader.Header.Get("Content-Type")),
-		// Pastikan file tidak dapat diakses publik tanpa Presigned URL
-		ACL: types.ObjectCannedACLPublicRead,
 	}
 
 	_, err = uploader.Upload(ctx, uploadInput)

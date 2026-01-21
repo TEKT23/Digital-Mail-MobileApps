@@ -15,6 +15,23 @@ type LetterCommonHandler struct {
 	permService *services.PermissionService
 }
 
+// AddPresignedURLToLetter - Helper untuk menambahkan presigned URL ke satu surat
+func AddPresignedURLToLetter(letter *models.Letter) {
+	if letter.FilePath != "" {
+		url, err := storage.GetPresignedURL(letter.FilePath)
+		if err == nil {
+			letter.FilePath = url
+		}
+	}
+}
+
+// AddPresignedURLsToLetters - Helper untuk menambahkan presigned URL ke slice surat
+func AddPresignedURLsToLetters(letters []models.Letter) {
+	for i := range letters {
+		AddPresignedURLToLetter(&letters[i])
+	}
+}
+
 func NewLetterCommonHandler(db *gorm.DB) *LetterCommonHandler {
 	return &LetterCommonHandler{
 		db:          db,
@@ -44,13 +61,7 @@ func (h *LetterCommonHandler) GetLetterByID(c *fiber.Ctx) error {
 	}
 
 	// [FIX] Generate Presigned URL agar gambar bisa dibuka di frontend
-	// Meskipun bucket public, URL lengkap tetap dibutuhkan
-	if letter.FilePath != "" {
-		url, err := storage.GetPresignedURL(letter.FilePath)
-		if err == nil {
-			letter.FilePath = url
-		}
-	}
+	AddPresignedURLToLetter(&letter)
 
 	return c.JSON(fiber.Map{"success": true, "data": letter})
 }

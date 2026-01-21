@@ -114,9 +114,11 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 			Type:   events.LetterCreated,
 			Letter: letter,
 		}
+		AddPresignedURLToLetter(&letter)
 		return utils.Created(c, "Surat masuk berhasil dicatat dan dikirim ke Direktur", letter)
 	}
 
+	AddPresignedURLToLetter(&letter)
 	return utils.Created(c, "Draft surat masuk berhasil disimpan", letter)
 }
 
@@ -192,9 +194,11 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 			Letter:    *letter,
 			OldStatus: oldStatus,
 		}
+		AddPresignedURLToLetter(letter)
 		return utils.OK(c, "Draft surat berhasil dikirim ke Direktur", letter)
 	}
 
+	AddPresignedURLToLetter(letter)
 	return utils.OK(c, "Surat masuk berhasil diperbarui", letter)
 }
 
@@ -210,6 +214,7 @@ func (h *LetterMasukHandler) GetMySuratMasuk(c *fiber.Ctx) error {
 		Order("created_at DESC").
 		Find(&letters)
 
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "List surat masuk saya berhasil diambil", letters)
 }
 
@@ -263,6 +268,7 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 		OldStatus: oldStatus,
 	}
 
+	AddPresignedURLToLetter(letter)
 	return utils.OK(c, "Disposisi berhasil disimpan", letter)
 }
 
@@ -310,6 +316,7 @@ func (h *LetterMasukHandler) GetLettersMasukForDisposition(c *fiber.Ctx) error {
 		Order("created_at DESC").
 		Find(&letters)
 
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "List disposisi berhasil diambil", letters)
 }
 
@@ -324,5 +331,6 @@ func (h *LetterMasukHandler) GetMyDispositions(c *fiber.Ctx) error {
 		Order("updated_at DESC").
 		Find(&letters)
 
+	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "Riwayat surat masuk yang sudah didisposisi", letters)
 }
