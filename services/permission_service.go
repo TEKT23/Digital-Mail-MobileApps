@@ -176,27 +176,28 @@ func (ps *PermissionService) CanUserViewLetter(user *models.User, letter *models
 		return true, nil
 	}
 
-	// 2. Pembuat surat (Staf) bisa lihat suratnya sendiri
+	// 2. Staf Lembaga (Archiver) bisa lihat SEMUA surat (internal & eksternal, masuk & keluar)
+	if user.Role == models.RoleStafLembaga {
+		return true, nil
+	}
+
+	// 3. Pembuat surat (Staf) bisa lihat suratnya sendiri
 	if letter.CreatedByID == user.ID {
 		return true, nil
 	}
 
-	// 3. Verifier (Manajer) bisa lihat jika ditugaskan kepadanya
+	// 4. Verifier (Manajer) bisa lihat jika ditugaskan kepadanya
 	if letter.AssignedVerifierID != nil && *letter.AssignedVerifierID == user.ID {
 		return true, nil
 	}
 
-	// 4. Manajer bisa lihat surat di Scope-nya (meski bukan verifier langsung, opsional)
+	// 5. Manajer bisa lihat surat di Scope-nya (meski bukan verifier langsung, opsional)
 	if user.IsManajer() {
 		return user.CanVerifyScope(letter.Scope), nil
 	}
 
-	// 5. Staf bisa lihat surat di Scope bidangnya (misal: arsip lama)
-	// Logic simplifikasi: Staf Program lihat Eksternal, Staf Lembaga lihat Internal
+	// 6. Staf Program bisa lihat surat Eksternal (scope bidangnya)
 	if user.Role == models.RoleStafProgram && letter.Scope == models.ScopeEksternal {
-		return true, nil
-	}
-	if user.Role == models.RoleStafLembaga && letter.Scope == models.ScopeInternal {
 		return true, nil
 	}
 
