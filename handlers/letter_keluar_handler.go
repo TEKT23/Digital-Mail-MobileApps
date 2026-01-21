@@ -477,9 +477,23 @@ func (h *LetterKeluarHandler) GetAvailableVerifiers(c *fiber.Ctx) error {
 func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
-	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).Order("updated_at DESC").Find(&letters)
+
+	// Staf Lembaga bisa melihat SEMUA surat keluar (sebagai arsiparis)
+	// Staf lain hanya melihat surat buatannya sendiri
+	if user.Role == models.RoleStafLembaga {
+		h.db.Where("jenis_surat = ?", models.LetterKeluar).
+			Preload("CreatedBy").
+			Order("updated_at DESC").
+			Find(&letters)
+	} else {
+		h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).
+			Preload("CreatedBy").
+			Order("updated_at DESC").
+			Find(&letters)
+	}
+
 	AddPresignedURLsToLetters(letters)
-	return utils.OK(c, "List surat saya berhasil diambil", letters)
+	return utils.OK(c, "List surat keluar berhasil diambil", letters)
 }
 
 // GetLettersNeedVerification (FIXED)

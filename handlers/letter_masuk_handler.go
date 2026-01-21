@@ -177,7 +177,8 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 	// Jika status dikirim "belum_disposisi" DAN surat masih draft, maka ini adalah submission
 	isSubmitting := req.Status != nil && *req.Status == models.StatusBelumDisposisi
 
-	if isSubmitting && letter.Status == models.StatusDraft {
+	// [FIX] Gunakan oldStatus untuk cek kondisi draft
+	if isSubmitting && oldStatus == models.StatusDraft {
 		// File wajib ada untuk submit
 		if letter.FilePath == "" {
 			return utils.BadRequest(c, "File surat wajib diunggah untuk mengirim surat", nil)
@@ -210,12 +211,23 @@ func (h *LetterMasukHandler) GetMySuratMasuk(c *fiber.Ctx) error {
 	}
 
 	var letters []models.Letter
-	h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterMasuk).
-		Order("created_at DESC").
-		Find(&letters)
+
+	// Staf Lembaga bisa melihat SEMUA surat masuk (sebagai arsiparis)
+	// Staf lain hanya melihat surat buatannya sendiri
+	if user.Role == models.RoleStafLembaga {
+		h.db.Where("jenis_surat = ?", models.LetterMasuk).
+			Preload("CreatedBy").
+			Order("created_at DESC").
+			Find(&letters)
+	} else {
+		h.db.Where("created_by_id = ? AND jenis_surat = ?", user.ID, models.LetterMasuk).
+			Preload("CreatedBy").
+			Order("created_at DESC").
+			Find(&letters)
+	}
 
 	AddPresignedURLsToLetters(letters)
-	return utils.OK(c, "List surat masuk saya berhasil diambil", letters)
+	return utils.OK(c, "List surat masuk berhasil diambil", letters)
 }
 
 // DisposeSuratMasuk - Direktur memberikan instruksi disposisi
@@ -249,7 +261,8 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 	now := time.Now()
 
 	// Update Data Disposisi
-	letter.Status = models.StatusSudahDisposisi
+	// [PERUBAHAN] Status langsung ke 'diarsipkan' agar muncul di riwayat surat
+	letter.Status = models.StatusDiarsipkan
 	letter.Disposisi = req.InstruksiDisposisi
 	letter.BidangTujuan = req.TujuanDisposisi
 	letter.DisposedByID = &user.ID
