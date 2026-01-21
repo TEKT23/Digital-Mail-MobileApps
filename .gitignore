@@ -2,6 +2,8 @@
 config/database.go
 digimail-mobile-firebase-adminsdk-fbsvc-77c65bbf85.json
 .env
+docs/API_UPDATE_DRAFT_HISTORY.md
+docs/FRONTEND_API_REFERENCE.md
 
 # Binaries
 *.exe

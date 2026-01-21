@@ -63,52 +63,74 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		return utils.Forbidden(c, "Anda tidak memiliki izin membuat surat keluar dengan scope ini")
 	}
 
-	// 5. Handle File Upload (Wajib ada file)
+	// 5. Handle File Upload (Wajib HANYA jika bukan draft)
+	var uploadedPath string
 	fileHeader, err := c.FormFile("file") // "file" adalah key di form-data
-	if err != nil {
-		return utils.BadRequest(c, "File surat wajib diunggah", nil)
+
+	if req.IsDraft {
+		// MODE DRAFT: File opsional
+		if err == nil {
+			// User upload file meskipun draft
+			ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+			if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+				return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
+			}
+			filename := fmt.Sprintf("surat/draft_%d%s", time.Now().UnixNano(), ext)
+			uploadedPath, err = storage.UploadFile(c.Context(), fileHeader, filename)
+			if err != nil {
+				return utils.InternalServerError(c, "Gagal mengupload file ke server")
+			}
+		}
+	} else {
+		// MODE SUBMIT: File wajib
+		if err != nil {
+			return utils.BadRequest(c, "File surat wajib diunggah untuk mengirim surat", nil)
+		}
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+			return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
+		}
+		filename := fmt.Sprintf("surat/keluar_%d%s", time.Now().UnixNano(), ext)
+		uploadedPath, err = storage.UploadFile(c.Context(), fileHeader, filename)
+		if err != nil {
+			return utils.InternalServerError(c, "Gagal mengupload file ke server")
+		}
 	}
 
-	// Validasi Ekstensi File
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
-		return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
-	}
-
-	// Upload ke S3/Storage
-	filename := fmt.Sprintf("surat/keluar_%d%s", time.Now().UnixNano(), ext)
-	uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
-	if err != nil {
-		return utils.InternalServerError(c, "Gagal mengupload file ke server")
-	}
-
-	// 6. Logic Penentuan Verifikator (Auto-Assign vs Manual)
+	// 6. Logic Penentuan Verifikator (Auto-Assign vs Manual) - HANYA jika bukan draft
 	var verifierID *uint
 
-	if strings.EqualFold(req.Scope, models.ScopeInternal) {
-		// === LOGIC OTOMATIS (Internal) ===
-		// Sistem mencari sendiri siapa Manajer PKL-nya
-		var manajerPKL models.User
-		if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err != nil {
-			return utils.InternalServerError(c, "Sistem Gagal: Manajer PKL belum terdaftar di sistem")
-		}
-		verifierID = &manajerPKL.ID
+	if !req.IsDraft {
+		if strings.EqualFold(req.Scope, models.ScopeInternal) {
+			// === LOGIC OTOMATIS (Internal) ===
+			// Sistem mencari sendiri siapa Manajer PKL-nya
+			var manajerPKL models.User
+			if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err != nil {
+				return utils.InternalServerError(c, "Sistem Gagal: Manajer PKL belum terdaftar di sistem")
+			}
+			verifierID = &manajerPKL.ID
 
-	} else {
-		// === LOGIC MANUAL (Eksternal) ===
-		// User (Staf Program) wajib memilih verifikator dari dropdown
-		if req.AssignedVerifierID == nil {
-			return utils.UnprocessableEntity(c, "Untuk surat Eksternal, Anda wajib memilih Verifikator (Manajer)", nil)
+		} else {
+			// === LOGIC MANUAL (Eksternal) ===
+			// User (Staf Program) wajib memilih verifikator dari dropdown
+			if req.AssignedVerifierID == nil {
+				return utils.UnprocessableEntity(c, "Untuk surat Eksternal, Anda wajib memilih Verifikator (Manajer)", nil)
+			}
+			verifierID = req.AssignedVerifierID
 		}
-		verifierID = req.AssignedVerifierID
 	}
 
 	// 7. Mapping ke Model
 	letter := req.ToModel()
 	letter.JenisSurat = models.LetterKeluar
 
-	// Status langsung ke 'perlu_verifikasi' karena file sudah ada & verifikator sudah ditentukan
-	letter.Status = models.StatusPerluVerifikasi
+	// Set status berdasarkan mode
+	if req.IsDraft {
+		letter.Status = models.StatusDraft
+	} else {
+		// Status langsung ke 'perlu_verifikasi' karena file sudah ada & verifikator sudah ditentukan
+		letter.Status = models.StatusPerluVerifikasi
+	}
 
 	letter.CreatedByID = user.ID
 	letter.AssignedVerifierID = verifierID
@@ -124,16 +146,19 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		return utils.InternalServerError(c, "Gagal menyimpan data surat")
 	}
 
-	// 9. Kirim Event Notifikasi
-	// Kita perlu preload data verifier (nama/role) agar notifikasi di consumer lengkap
-	h.db.Preload("AssignedVerifier").First(&letter, letter.ID)
+	// 9. Kirim Event Notifikasi (HANYA jika bukan draft)
+	if !req.IsDraft {
+		// Kita perlu preload data verifier (nama/role) agar notifikasi di consumer lengkap
+		h.db.Preload("AssignedVerifier").First(&letter, letter.ID)
 
-	events.LetterEventBus <- events.LetterEvent{
-		Type:   events.LetterCreated,
-		Letter: letter,
+		events.LetterEventBus <- events.LetterEvent{
+			Type:   events.LetterCreated,
+			Letter: letter,
+		}
+		return utils.Created(c, "Surat keluar berhasil dibuat dan diteruskan ke Verifikator", letter)
 	}
 
-	return utils.Created(c, "Surat keluar berhasil dibuat dan diteruskan ke Verifikator", letter)
+	return utils.Created(c, "Draft surat berhasil disimpan", letter)
 }
 
 // UpdateDraftLetter - Handler untuk edit dan submit draft
@@ -466,4 +491,19 @@ func (h *LetterKeluarHandler) GetLettersNeedApproval(c *fiber.Ctx) error {
 	var letters []models.Letter
 	h.db.Where("status = ? AND jenis_surat = ?", models.StatusPerluPersetujuan, models.LetterKeluar).Preload("CreatedBy").Preload("VerifiedBy").Order("created_at ASC").Find(&letters)
 	return utils.OK(c, "List surat perlu persetujuan berhasil diambil", letters)
+}
+
+// GetMyApprovals - Direktur melihat riwayat surat keluar yang sudah di-approve
+func (h *LetterKeluarHandler) GetMyApprovals(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
+	var letters []models.Letter
+
+	// Surat keluar yang sudah di-approve oleh direktur ini (disposed_by_id = user.ID)
+	h.db.Where("disposed_by_id = ? AND jenis_surat = ?", user.ID, models.LetterKeluar).
+		Preload("CreatedBy").
+		Preload("VerifiedBy").
+		Order("updated_at DESC").
+		Find(&letters)
+
+	return utils.OK(c, "Riwayat surat keluar yang sudah disetujui", letters)
 }

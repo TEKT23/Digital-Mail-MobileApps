@@ -16,6 +16,9 @@ type CreateLetterMasukRequest struct {
 	Prioritas    string `json:"prioritas" form:"prioritas"`
 	IsiSurat     string `json:"isi_surat" form:"isi_surat"`
 
+	// IsDraft: true = simpan sebagai draft, false/kosong = langsung kirim ke Direktur
+	IsDraft bool `json:"is_draft" form:"is_draft"`
+
 	// Note: FilePath di-handle handler
 }
 
@@ -29,6 +32,9 @@ type UpdateLetterMasukRequest struct {
 	Scope        *string `json:"scope" form:"scope"`
 	Prioritas    *string `json:"prioritas" form:"prioritas"`
 	IsiSurat     *string `json:"isi_surat" form:"isi_surat"`
+
+	// SubmitDraft: true = submit draft ke Direktur, false = tetap simpan sebagai draft
+	SubmitDraft bool `json:"submit_draft" form:"submit_draft"`
 }
 
 func (r *CreateLetterMasukRequest) Validate() map[string]string {

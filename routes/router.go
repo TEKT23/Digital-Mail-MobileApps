@@ -76,6 +76,8 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	// Eksekusi Approval
 	letters.Post("/keluar/:id/approve", middleware.RequireDirektur(), lkHandler.ApproveLetterByDirektur)
 	letters.Post("/keluar/:id/reject", middleware.RequireDirektur(), lkHandler.RejectLetterByDirektur)
+	// Riwayat surat keluar yang sudah disetujui
+	letters.Get("/keluar/my-approvals", middleware.RequireDirektur(), lkHandler.GetMyApprovals)
 
 	// --- C. WORKFLOW SURAT MASUK ---
 
@@ -90,6 +92,8 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	letters.Get("/masuk/need-disposition", middleware.RequireDirektur(), lmHandler.GetLettersMasukForDisposition)
 	// Eksekusi Disposisi
 	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
+	// Riwayat surat masuk yang sudah didisposisi
+	letters.Get("/masuk/my-dispositions", middleware.RequireDirektur(), lmHandler.GetMyDispositions)
 
 	// 6. ADMIN ZONE
 	admin := api.Group("/admin", middleware.RequireAdmin())

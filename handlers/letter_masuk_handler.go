@@ -53,42 +53,66 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		return utils.Forbidden(c, "Anda tidak memiliki izin mencatat surat masuk")
 	}
 
-	// 4. Handle File Upload
+	// 4. Handle File Upload (Wajib HANYA jika bukan draft)
+	var uploadedPath string
 	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		return utils.BadRequest(c, "File surat wajib diunggah", nil)
-	}
 
-	// Validasi Ekstensi
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
-		return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
-	}
-
-	// Upload ke Storage
-	filename := fmt.Sprintf("surat/masuk_%d%s", time.Now().UnixNano(), ext)
-	uploadedPath, err := storage.UploadFile(c.Context(), fileHeader, filename)
-	if err != nil {
-		return utils.InternalServerError(c, "Gagal mengupload file ke server")
+	if req.IsDraft {
+		// MODE DRAFT: File opsional
+		if err == nil {
+			// User upload file meskipun draft
+			ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+			if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+				return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
+			}
+			filename := fmt.Sprintf("surat/draft_masuk_%d%s", time.Now().UnixNano(), ext)
+			uploadedPath, err = storage.UploadFile(c.Context(), fileHeader, filename)
+			if err != nil {
+				return utils.InternalServerError(c, "Gagal mengupload file ke server")
+			}
+		}
+	} else {
+		// MODE SUBMIT: File wajib
+		if err != nil {
+			return utils.BadRequest(c, "File surat wajib diunggah untuk mengirim surat", nil)
+		}
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if ext != ".pdf" && ext != ".jpg" && ext != ".png" && ext != ".jpeg" {
+			return utils.BadRequest(c, "Format file harus PDF atau Gambar", nil)
+		}
+		filename := fmt.Sprintf("surat/masuk_%d%s", time.Now().UnixNano(), ext)
+		uploadedPath, err = storage.UploadFile(c.Context(), fileHeader, filename)
+		if err != nil {
+			return utils.InternalServerError(c, "Gagal mengupload file ke server")
+		}
 	}
 
 	// 5. Mapping ke Model
 	letter := req.ToModel(user.ID, uploadedPath)
 	letter.JenisSurat = models.LetterMasuk
-	// Status default 'belum_disposisi' sudah di-set di mapper, tapi force set disini agar jelas
-	letter.Status = models.StatusBelumDisposisi
+
+	// Set status berdasarkan mode
+	if req.IsDraft {
+		letter.Status = models.StatusDraft
+	} else {
+		// Status langsung ke 'belum_disposisi' untuk dikirim ke Direktur
+		letter.Status = models.StatusBelumDisposisi
+	}
 
 	if err := h.db.Create(&letter).Error; err != nil {
 		return utils.InternalServerError(c, "Gagal mencatat surat masuk")
 	}
 
-	// 6. Kirim Notifikasi
-	events.LetterEventBus <- events.LetterEvent{
-		Type:   events.LetterCreated,
-		Letter: letter,
+	// 6. Kirim Notifikasi (HANYA jika bukan draft)
+	if !req.IsDraft {
+		events.LetterEventBus <- events.LetterEvent{
+			Type:   events.LetterCreated,
+			Letter: letter,
+		}
+		return utils.Created(c, "Surat masuk berhasil dicatat dan dikirim ke Direktur", letter)
 	}
 
-	return utils.Created(c, "Surat masuk berhasil dicatat dan dikirim ke Direktur", letter)
+	return utils.Created(c, "Draft surat masuk berhasil disimpan", letter)
 }
 
 // UpdateSuratMasuk - Staf edit surat masuk (hanya jika belum diarsip/disposisi final)
@@ -109,12 +133,12 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 		return utils.Forbidden(c, "Anda tidak berhak mengedit surat ini")
 	}
 
-	// Cek Status (Boleh edit selama belum Diarsipkan)
-	// Jika sudah didisposisi, mungkin user ingin update kesalahan data minor?
-	// Untuk aman: Hanya boleh edit jika StatusBelumDisposisi
-	if letter.Status != models.StatusBelumDisposisi {
+	// Cek Status (Boleh edit jika Draft atau Belum Disposisi)
+	if letter.Status != models.StatusDraft && letter.Status != models.StatusBelumDisposisi {
 		return utils.Conflict(c, "Surat yang sudah didisposisi tidak dapat diedit")
 	}
+
+	oldStatus := letter.Status
 
 	// Parsing Request
 	var req letters.UpdateLetterMasukRequest
@@ -128,7 +152,7 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 	// Apply Update Metadata
 	letters.ApplyUpdateMasuk(letter, &req)
 
-	// Handle File Upload (Optional Replace)
+	// Handle File Upload (Optional Replace, WAJIB jika submit draft)
 	fileHeader, err := c.FormFile("file")
 	if err == nil {
 		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
@@ -143,7 +167,27 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 		letter.FilePath = uploadedPath
 	}
 
+	// Jika submit_draft = true, validasi file dan ubah status
+	if req.SubmitDraft && letter.Status == models.StatusDraft {
+		// File wajib ada untuk submit
+		if letter.FilePath == "" {
+			return utils.BadRequest(c, "File surat wajib diunggah untuk mengirim surat", nil)
+		}
+		letter.Status = models.StatusBelumDisposisi
+	}
+
 	h.db.Save(letter)
+
+	// Kirim notifikasi jika status berubah dari draft ke belum_disposisi
+	if oldStatus == models.StatusDraft && letter.Status == models.StatusBelumDisposisi {
+		events.LetterEventBus <- events.LetterEvent{
+			Type:      events.LetterStatusMoved,
+			Letter:    *letter,
+			OldStatus: oldStatus,
+		}
+		return utils.OK(c, "Draft surat berhasil dikirim ke Direktur", letter)
+	}
+
 	return utils.OK(c, "Surat masuk berhasil diperbarui", letter)
 }
 
@@ -260,4 +304,18 @@ func (h *LetterMasukHandler) GetLettersMasukForDisposition(c *fiber.Ctx) error {
 		Find(&letters)
 
 	return utils.OK(c, "List disposisi berhasil diambil", letters)
+}
+
+// GetMyDispositions - Direktur melihat riwayat surat masuk yang sudah didisposisi
+func (h *LetterMasukHandler) GetMyDispositions(c *fiber.Ctx) error {
+	user, _ := middleware.GetUserFromContext(c)
+	var letters []models.Letter
+
+	// Surat masuk yang sudah didisposisi oleh direktur ini (disposed_by_id = user.ID)
+	h.db.Where("disposed_by_id = ? AND jenis_surat = ?", user.ID, models.LetterMasuk).
+		Preload("CreatedBy").
+		Order("updated_at DESC").
+		Find(&letters)
+
+	return utils.OK(c, "Riwayat surat masuk yang sudah didisposisi", letters)
 }

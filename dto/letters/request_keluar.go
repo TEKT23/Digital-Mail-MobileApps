@@ -39,6 +39,9 @@ type CreateLetterKeluarRequest struct {
 
 	// Khusus Verifier ID (User input dari dropdown)
 	AssignedVerifierID *uint `json:"assigned_verifier_id" form:"assigned_verifier_id"`
+
+	// IsDraft: true = simpan sebagai draft, false/kosong = langsung kirim ke verifikator
+	IsDraft bool `json:"is_draft" form:"is_draft"`
 }
 
 type UpdateLetterKeluarRequest struct {
