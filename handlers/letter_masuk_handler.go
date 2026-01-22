@@ -254,6 +254,7 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 		InstruksiDisposisi string `json:"instruksi_disposisi"`
 		TujuanDisposisi    string `json:"tujuan_disposisi"` // Bidang Tujuan
 		Catatan            string `json:"catatan"`
+		NeedsReply         bool   `json:"needs_reply"` // Flag: apakah surat ini butuh balasan?
 	}
 	c.BodyParser(&req)
 
@@ -267,6 +268,7 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 	letter.BidangTujuan = req.TujuanDisposisi
 	letter.DisposedByID = &user.ID
 	letter.TanggalDisposisi = &now
+	letter.NeedsReply = req.NeedsReply // Set flag needs_reply
 
 	if req.Catatan != "" {
 		letter.Disposisi += " | Catatan: " + req.Catatan
@@ -346,4 +348,52 @@ func (h *LetterMasukHandler) GetMyDispositions(c *fiber.Ctx) error {
 
 	AddPresignedURLsToLetters(letters)
 	return utils.OK(c, "Riwayat surat masuk yang sudah didisposisi", letters)
+}
+
+// GetLettersNeedingReply - List surat masuk yang butuh balasan (needs_reply = true)
+// Filter by scope: Staf Program → Eksternal, Staf Lembaga → Internal
+func (h *LetterMasukHandler) GetLettersNeedingReply(c *fiber.Ctx) error {
+	user, err := middleware.GetUserFromContext(c)
+	if err != nil {
+		return utils.Unauthorized(c, "Unauthorized")
+	}
+
+	// Tentukan scope berdasarkan role staf
+	var scopeFilter string
+	switch user.Role {
+	case models.RoleStafProgram:
+		scopeFilter = models.ScopeEksternal
+	case models.RoleStafLembaga:
+		scopeFilter = models.ScopeInternal
+	default:
+		// Role lain (admin, direktur, manajer) bisa lihat semua
+		scopeFilter = ""
+	}
+
+	var letters []models.Letter
+
+	// Build query
+	query := h.db.Where("jenis_surat = ? AND needs_reply = ?", models.LetterMasuk, true)
+
+	// Apply scope filter jika staf
+	if scopeFilter != "" {
+		query = query.Where("scope = ?", scopeFilter)
+	}
+
+	query.Preload("CreatedBy").
+		Preload("DisposedBy").
+		Preload("Replies"). // Preload surat balasan jika ada
+		Order("updated_at DESC").
+		Find(&letters)
+
+	// Filter hanya yang belum punya balasan
+	var needsReply []models.Letter
+	for _, l := range letters {
+		if len(l.Replies) == 0 {
+			needsReply = append(needsReply, l)
+		}
+	}
+
+	AddPresignedURLsToLetters(needsReply)
+	return utils.OK(c, "List surat masuk yang butuh balasan", needsReply)
 }

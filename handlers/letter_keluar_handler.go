@@ -125,6 +125,21 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		}
 	}
 
+	// 6.5 Validasi Reply Linking (Opsional)
+	// Jika user menyertakan InReplyToID, validasi bahwa surat induk ada dan perlu balasan
+	if req.InReplyToID != nil {
+		var parentLetter models.Letter
+		if err := h.db.First(&parentLetter, *req.InReplyToID).Error; err != nil {
+			return utils.BadRequest(c, "Surat yang akan dibalas tidak ditemukan", nil)
+		}
+		if !parentLetter.IsSuratMasuk() {
+			return utils.BadRequest(c, "Hanya surat masuk yang dapat dibalas", nil)
+		}
+		if !parentLetter.NeedsReply {
+			return utils.BadRequest(c, "Surat masuk ini tidak ditandai perlu balasan", nil)
+		}
+	}
+
 	// 7. Mapping ke Model
 	letter := req.ToModel()
 	letter.JenisSurat = models.LetterKeluar

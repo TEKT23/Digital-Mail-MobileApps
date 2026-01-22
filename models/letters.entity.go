@@ -71,6 +71,12 @@ type Letter struct {
 	VerifiedBy   *User `gorm:"foreignkey:VerifiedByID"`
 	DisposedByID *uint `gorm:"index"`
 	DisposedBy   *User `gorm:"foreignkey:DisposedByID"`
+
+	// Reply Linking Fields
+	NeedsReply  bool     `gorm:"default:false;index" json:"needs_reply"` // Flag: surat masuk ini butuh balasan?
+	InReplyToID *uint    `gorm:"index" json:"in_reply_to_id,omitempty"`  // FK: surat ini adalah balasan dari surat mana?
+	InReplyTo   *Letter  `gorm:"foreignKey:InReplyToID" json:"in_reply_to,omitempty"`
+	Replies     []Letter `gorm:"foreignKey:InReplyToID" json:"replies,omitempty"` // Surat-surat yang membalas surat ini
 }
 
 func (Letter) TableName() string { return "surat" }

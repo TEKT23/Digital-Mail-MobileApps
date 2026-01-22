@@ -1,0 +1,98 @@
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold mb-0">Settings</h4>
+</div>
+
+<div class="row g-4">
+    <!-- Profile Settings -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-person me-2"></i>Profil Saya
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/admin/settings/profile">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Username</label>
+                        <input type="text" class="form-control" value="{{.User.Username}}" disabled>
+                        <small class="text-muted">Username tidak dapat diubah</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Email</label>
+                        <input type="email" class="form-control" value="{{.User.Email}}" disabled>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Nama Depan</label>
+                            <input type="text" name="first_name" class="form-control" value="{{.User.FirstName}}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Nama Belakang</label>
+                            <input type="text" name="last_name" class="form-control" value="{{.User.LastName}}">
+                        </div>
+                    </div>
+                    <div class="mb-3 mt-3">
+                        <label class="form-label fw-semibold">Jabatan</label>
+                        <input type="text" name="jabatan" class="form-control" value="{{.User.Jabatan}}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Update Profil
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Settings -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-shield-lock me-2"></i>Ganti Password
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/admin/settings/password">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Password Lama</label>
+                        <input type="password" name="old_password" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Password Baru</label>
+                        <input type="password" name="new_password" class="form-control" required>
+                        <small class="text-muted">Minimal 6 karakter</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Konfirmasi Password Baru</label>
+                        <input type="password" name="confirm_password" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-key me-1"></i>Ganti Password
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Account Info -->
+<div class="card mt-4">
+    <div class="card-header">
+        <i class="bi bi-info-circle me-2"></i>Informasi Akun
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <small class="text-muted d-block">Role</small>
+                <span class="badge bg-danger">{{.User.Role}}</span>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted d-block">ID</small>
+                <strong>{{.User.ID}}</strong>
+            </div>
+            <div class="col-md-4">
+                <small class="text-muted d-block">Status</small>
+                <span class="badge bg-success">Aktif</span>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

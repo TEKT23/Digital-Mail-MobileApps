@@ -76,17 +76,45 @@ func SetupRoutes(app *fiber.App, db *gorm.DB) {
 	letters.Get("/masuk/my-dispositions", middleware.RequireDirektur(), lmHandler.GetMyDispositions)
 	letters.Post("/masuk/:id/dispose", middleware.RequireDirektur(), lmHandler.DisposeSuratMasuk)
 
+	// Reply Linking - Surat masuk yang butuh balasan
+	letters.Get("/masuk/needs-reply", middleware.RequireStaf(), lmHandler.GetLettersNeedingReply)
+
 	// --- D. GENERIC ROUTES (must be LAST to avoid catching specific routes) ---
 	// Melihat Detail Surat (any letter by ID)
 	letters.Get("/:id", commonHandler.GetLetterByID)
 	// Menghapus/Membatalkan Surat (Soft Delete / Cancel)
 	letters.Delete("/:id", commonHandler.DeleteLetter)
 
-	// 6. ADMIN ZONE
+	// 6. ADMIN ZONE (API)
 	admin := api.Group("/admin", middleware.RequireAdmin())
 	admin.Post("/users", handlers.AdminCreateUser)
 	admin.Get("/users", handlers.AdminListUsers)
 	admin.Get("/users/:id", handlers.AdminGetUserByID)
 	admin.Put("/users/:id", handlers.AdminUpdateUser)
 	admin.Delete("/users/:id", handlers.AdminDeleteUser)
+
+	// 7. ADMIN WEB PANEL (Session-based auth)
+	webHandler := handlers.NewWebAdminHandler()
+
+	// Static files
+	app.Static("/static", "./static")
+
+	// Public routes (login)
+	adminWeb := app.Group("/admin")
+	adminWeb.Get("/login", webHandler.ShowLoginPage)
+	adminWeb.Post("/login", webHandler.HandleLogin)
+
+	// Protected routes (require session)
+	adminWebAuth := adminWeb.Group("", middleware.RequireAdminSession())
+	adminWebAuth.Post("/logout", webHandler.HandleLogout)
+	adminWebAuth.Get("/", webHandler.ShowDashboard)
+	adminWebAuth.Get("/users", webHandler.ShowUserList)
+	adminWebAuth.Get("/users/create", webHandler.ShowCreateUserForm)
+	adminWebAuth.Post("/users", webHandler.HandleCreateUser)
+	adminWebAuth.Get("/users/:id/edit", webHandler.ShowEditUserForm)
+	adminWebAuth.Post("/users/:id", webHandler.HandleUpdateUser)
+	adminWebAuth.Post("/users/:id/delete", webHandler.HandleDeleteUser)
+	adminWebAuth.Get("/settings", webHandler.ShowSettings)
+	adminWebAuth.Post("/settings/profile", webHandler.HandleUpdateProfile)
+	adminWebAuth.Post("/settings/password", webHandler.HandleChangePassword)
 }

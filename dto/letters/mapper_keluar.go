@@ -39,6 +39,7 @@ func (r *CreateLetterKeluarRequest) ToModel() models.Letter {
 		letter.Status = models.StatusDraft
 	}
 	letter.TanggalDisposisi = r.TanggalDisposisi
+	letter.InReplyToID = r.InReplyToID // Reply linking
 
 	return letter
 }

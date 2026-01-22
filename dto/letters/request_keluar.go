@@ -40,6 +40,9 @@ type CreateLetterKeluarRequest struct {
 
 	// Khusus Verifier ID (User input dari dropdown)
 	AssignedVerifierID *uint `json:"assigned_verifier_id" form:"assigned_verifier_id"`
+
+	// Reply Linking: ID surat masuk yang dibalas (opsional)
+	InReplyToID *uint `json:"in_reply_to_id" form:"in_reply_to_id"`
 }
 
 type UpdateLetterKeluarRequest struct {

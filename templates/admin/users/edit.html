@@ -1,0 +1,83 @@
+{{define "content"}}
+<div class="d-flex align-items-center mb-4">
+    <a href="/admin/users" class="btn btn-outline-secondary me-3">
+        <i class="bi bi-arrow-left"></i>
+    </a>
+    <h4 class="fw-bold mb-0">Edit User: {{.EditUser.Username}}</h4>
+</div>
+
+<div class="card" style="max-width: 700px;">
+    <div class="card-body p-4">
+        <form method="POST" action="/admin/users/{{.EditUser.ID}}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Username <span class="text-danger">*</span></label>
+                    <input type="text" name="username" class="form-control {{if .Errors.username}}is-invalid{{end}}"
+                        value="{{.EditUser.Username}}" required>
+                    {{if .Errors.username}}<div class="invalid-feedback">{{.Errors.username}}</div>{{end}}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
+                    <input type="email" name="email" class="form-control {{if .Errors.email}}is-invalid{{end}}"
+                        value="{{.EditUser.Email}}" required>
+                    {{if .Errors.email}}<div class="invalid-feedback">{{.Errors.email}}</div>{{end}}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Nama Depan <span class="text-danger">*</span></label>
+                    <input type="text" name="first_name" class="form-control {{if .Errors.first_name}}is-invalid{{end}}"
+                        value="{{.EditUser.FirstName}}" required>
+                    {{if .Errors.first_name}}<div class="invalid-feedback">{{.Errors.first_name}}</div>{{end}}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Nama Belakang</label>
+                    <input type="text" name="last_name" class="form-control" value="{{.EditUser.LastName}}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-semibold">Password Baru</label>
+                    <input type="password" name="password" class="form-control">
+                    <small class="text-muted">Kosongkan jika tidak ingin mengubah password</small>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
+                    <select name="role" class="form-select {{if .Errors.role}}is-invalid{{end}}" required>
+                        <option value="admin" {{if eq .EditUser.Role "admin" }}selected{{end}}>Admin</option>
+                        <option value="direktur" {{if eq .EditUser.Role "direktur" }}selected{{end}}>Direktur</option>
+                        <option value="manajer_kpp" {{if eq .EditUser.Role "manajer_kpp" }}selected{{end}}>Manajer KPP
+                        </option>
+                        <option value="manajer_pemas" {{if eq .EditUser.Role "manajer_pemas" }}selected{{end}}>Manajer
+                            Pemas</option>
+                        <option value="manajer_pkl" {{if eq .EditUser.Role "manajer_pkl" }}selected{{end}}>Manajer PKL
+                        </option>
+                        <option value="staf_program" {{if eq .EditUser.Role "staf_program" }}selected{{end}}>Staf
+                            Program</option>
+                        <option value="staf_lembaga" {{if eq .EditUser.Role "staf_lembaga" }}selected{{end}}>Staf
+                            Lembaga</option>
+                    </select>
+                    {{if .Errors.role}}<div class="invalid-feedback">{{.Errors.role}}</div>{{end}}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Jabatan</label>
+                    <input type="text" name="jabatan" class="form-control" value="{{.EditUser.Jabatan}}"
+                        placeholder="Contoh: Kepala Bagian IT">
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-semibold">Atribut Tambahan</label>
+                    <textarea name="atribut" class="form-control" rows="2"
+                        placeholder="Informasi tambahan (opsional)">{{.EditUser.Atribut}}</textarea>
+                </div>
+            </div>
+
+            <hr class="my-4">
+            <div class="d-flex justify-content-between">
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-check-lg me-1"></i>Update
+                    </button>
+                    <a href="/admin/users" class="btn btn-outline-secondary">Batal</a>
+                </div>
+                <small class="text-muted align-self-center">ID: {{.EditUser.ID}}</small>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}
