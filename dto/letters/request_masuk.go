@@ -7,6 +7,7 @@ import (
 
 // CreateLetterMasukRequest - Req khusus untuk surat masuk
 type CreateLetterMasukRequest struct {
+	NomorAgenda  string `json:"nomor_agenda" form:"nomor_agenda"`
 	NomorSurat   string `json:"nomor_surat" form:"nomor_surat"`
 	Pengirim     string `json:"pengirim" form:"pengirim"`
 	JudulSurat   string `json:"judul_surat" form:"judul_surat"`
@@ -15,6 +16,7 @@ type CreateLetterMasukRequest struct {
 	Scope        string `json:"scope" form:"scope"`
 	Prioritas    string `json:"prioritas" form:"prioritas"`
 	IsiSurat     string `json:"isi_surat" form:"isi_surat"`
+	Kesimpulan   string `json:"kesimpulan" form:"kesimpulan"` // Opsional
 
 	// Status: kosong/"draft" = simpan sebagai draft, "belum_disposisi" = kirim ke Direktur
 	Status models.LetterStatus `json:"status" form:"status"`
@@ -24,6 +26,7 @@ type CreateLetterMasukRequest struct {
 
 // UpdateLetterMasukRequest - Req untuk edit (hanya field yang relevan)
 type UpdateLetterMasukRequest struct {
+	NomorAgenda  *string `json:"nomor_agenda" form:"nomor_agenda"`
 	NomorSurat   *string `json:"nomor_surat" form:"nomor_surat"`
 	Pengirim     *string `json:"pengirim" form:"pengirim"`
 	JudulSurat   *string `json:"judul_surat" form:"judul_surat"`
@@ -32,6 +35,7 @@ type UpdateLetterMasukRequest struct {
 	Scope        *string `json:"scope" form:"scope"`
 	Prioritas    *string `json:"prioritas" form:"prioritas"`
 	IsiSurat     *string `json:"isi_surat" form:"isi_surat"`
+	Kesimpulan   *string `json:"kesimpulan" form:"kesimpulan"`
 
 	// Status: "belum_disposisi" = submit draft ke Direktur
 	Status *models.LetterStatus `json:"status" form:"status"`

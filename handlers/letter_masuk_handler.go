@@ -262,8 +262,6 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 	now := time.Now()
 
 	// Update Data Disposisi
-	// [PERUBAHAN] Status langsung ke 'diarsipkan' agar muncul di riwayat surat
-	letter.Status = models.StatusDiarsipkan
 	letter.Disposisi = req.InstruksiDisposisi
 	letter.BidangTujuan = req.TujuanDisposisi
 	letter.DisposedByID = &user.ID
@@ -272,6 +270,15 @@ func (h *LetterMasukHandler) DisposeSuratMasuk(c *fiber.Ctx) error {
 
 	if req.Catatan != "" {
 		letter.Disposisi += " | Catatan: " + req.Catatan
+	}
+
+	// Tentukan status berdasarkan needs_reply:
+	// - needs_reply = true  → sudah_disposisi (menunggu surat keluar balasan)
+	// - needs_reply = false → diarsipkan (tidak perlu tindakan lanjutan)
+	if req.NeedsReply {
+		letter.Status = models.StatusSudahDisposisi
+	} else {
+		letter.Status = models.StatusDiarsipkan
 	}
 
 	h.db.Save(letter)

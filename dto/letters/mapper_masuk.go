@@ -26,6 +26,7 @@ func (r *CreateLetterMasukRequest) ToModel(userID uint, filePath string) models.
 	}
 
 	return models.Letter{
+		NomorAgenda:  strings.TrimSpace(r.NomorAgenda),
 		NomorSurat:   strings.TrimSpace(r.NomorSurat),
 		Pengirim:     strings.TrimSpace(r.Pengirim),
 		JudulSurat:   strings.TrimSpace(r.JudulSurat),
@@ -36,6 +37,7 @@ func (r *CreateLetterMasukRequest) ToModel(userID uint, filePath string) models.
 		FilePath:     filePath,
 		Prioritas:    priority,
 		IsiSurat:     strings.TrimSpace(r.IsiSurat),
+		Kesimpulan:   strings.TrimSpace(r.Kesimpulan),
 		TanggalSurat: tglSurat,
 		TanggalMasuk: tglMasuk,
 	}
@@ -46,6 +48,9 @@ func ApplyUpdateMasuk(letter *models.Letter, req *UpdateLetterMasukRequest) {
 		return
 	}
 
+	if req.NomorAgenda != nil {
+		letter.NomorAgenda = strings.TrimSpace(*req.NomorAgenda)
+	}
 	if req.NomorSurat != nil {
 		letter.NomorSurat = strings.TrimSpace(*req.NomorSurat)
 	}
@@ -57,6 +62,9 @@ func ApplyUpdateMasuk(letter *models.Letter, req *UpdateLetterMasukRequest) {
 	}
 	if req.IsiSurat != nil {
 		letter.IsiSurat = strings.TrimSpace(*req.IsiSurat)
+	}
+	if req.Kesimpulan != nil {
+		letter.Kesimpulan = strings.TrimSpace(*req.Kesimpulan)
 	}
 	if req.Scope != nil {
 		letter.Scope = strings.TrimSpace(*req.Scope)
