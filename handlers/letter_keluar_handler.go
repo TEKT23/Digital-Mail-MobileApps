@@ -161,9 +161,31 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		letter.Prioritas = models.PriorityBiasa
 	}
 
-	// 8. Simpan ke Database
-	if err := h.db.Create(&letter).Error; err != nil {
-		return utils.InternalServerError(c, "Gagal menyimpan data surat")
+	// 8. Simpan ke Database (Transactional with Auto-Increment Nomor Agenda)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		// Auto-Generate Nomor Agenda untuk Surat Keluar
+		var lastSeq int
+		currentYear := time.Now().Year()
+
+		// Cari max nomor agenda tahun ini untuk surat keluar
+		if err := tx.Model(&models.Letter{}).
+			Where("jenis_surat = ? AND YEAR(created_at) = ?", models.LetterKeluar, currentYear).
+			Select("MAX(CAST(nomor_agenda AS UNSIGNED))").
+			Scan(&lastSeq).Error; err != nil {
+			return err
+		}
+
+		newSeq := lastSeq + 1
+		letter.NomorAgenda = fmt.Sprintf("%d", newSeq)
+
+		if err := tx.Create(&letter).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal menyimpan data surat: "+err.Error())
 	}
 
 	// 9. Kirim Event Notifikasi (HANYA jika bukan draft)

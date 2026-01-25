@@ -104,8 +104,34 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		letter.Status = models.StatusBelumDisposisi
 	}
 
-	if err := h.db.Create(&letter).Error; err != nil {
-		return utils.InternalServerError(c, "Gagal mencatat surat masuk")
+	// [FIX] Auto-Generate Nomor Agenda (Transactional)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		// Hanya generate nomor agenda jika belum ada (atau dioverwrite sistem)
+		// Kita akan memaksa generate agar konsisten
+		var lastSeq int
+		currentYear := time.Now().Year()
+
+		// Cari max nomor agenda tahun ini
+		// Asumsi: NomorAgenda disimpan sebagai string angka murni ("1", "2", dst)
+		// Jika formatnya kompleks (misal "001/AG/2023"), logic ini perlu disesuaikan dengan REGEX/Substring
+		if err := tx.Model(&models.Letter{}).
+			Where("jenis_surat = ? AND YEAR(created_at) = ?", models.LetterMasuk, currentYear).
+			Select("MAX(CAST(nomor_agenda AS UNSIGNED))").
+			Scan(&lastSeq).Error; err != nil {
+			return err
+		}
+
+		newSeq := lastSeq + 1
+		letter.NomorAgenda = fmt.Sprintf("%d", newSeq)
+
+		if err := tx.Create(&letter).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal mencatat surat masuk: "+err.Error())
 	}
 
 	// 6. Kirim Notifikasi (HANYA jika bukan draft)
@@ -369,7 +395,9 @@ func (h *LetterMasukHandler) GetLettersNeedingReply(c *fiber.Ctx) error {
 	var scopeFilter string
 	switch user.Role {
 	case models.RoleStafProgram:
-		scopeFilter = models.ScopeEksternal
+		// [CHANGE] Staf Program should see ALL letters needing reply, not just External
+		// scopeFilter = models.ScopeEksternal
+		scopeFilter = ""
 	case models.RoleStafLembaga:
 		scopeFilter = models.ScopeInternal
 	default:

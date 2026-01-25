@@ -49,6 +49,8 @@
                         <option value="">-- Pilih Role --</option>
                         <option value="admin" {{if eq .Form.Role "admin" }}selected{{end}}>Admin</option>
                         <option value="direktur" {{if eq .Form.Role "direktur" }}selected{{end}}>Direktur</option>
+                        <option value="pengurus" {{if eq .Form.Role "pengurus" }}selected{{end}}>Pengurus (Board)
+                        </option>
                         <option value="manajer_kpp" {{if eq .Form.Role "manajer_kpp" }}selected{{end}}>Manajer KPP
                         </option>
                         <option value="manajer_pemas" {{if eq .Form.Role "manajer_pemas" }}selected{{end}}>Manajer Pemas

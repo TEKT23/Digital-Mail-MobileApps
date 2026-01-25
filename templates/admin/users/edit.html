@@ -42,6 +42,8 @@
                     <select name="role" class="form-select {{if .Errors.role}}is-invalid{{end}}" required>
                         <option value="admin" {{if eq .EditUser.Role "admin" }}selected{{end}}>Admin</option>
                         <option value="direktur" {{if eq .EditUser.Role "direktur" }}selected{{end}}>Direktur</option>
+                        <option value="pengurus" {{if eq .EditUser.Role "pengurus" }}selected{{end}}>Pengurus (Board)
+                        </option>
                         <option value="manajer_kpp" {{if eq .EditUser.Role "manajer_kpp" }}selected{{end}}>Manajer KPP
                         </option>
                         <option value="manajer_pemas" {{if eq .EditUser.Role "manajer_pemas" }}selected{{end}}>Manajer

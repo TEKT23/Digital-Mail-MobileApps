@@ -7,6 +7,7 @@ type Role string
 const (
 	RoleAdmin        Role = "admin"
 	RoleDirektur     Role = "direktur"
+	RolePengurus     Role = "pengurus"     // Role baru: Monitoring / Super Observer
 	RoleStafProgram  Role = "staf_program" // Pengganti ADC
 	RoleStafLembaga  Role = "staf_lembaga" // Pengganti Bagian Umum
 	RoleManajerKPP   Role = "manajer_kpp"
@@ -21,7 +22,7 @@ type User struct {
 	LastName     string `gorm:"type:varchar(100)" json:"last_name"`
 	Email        string `gorm:"type:varchar(191);uniqueIndex;not null" json:"email"` // Email Boleh ditampilkan untuk kontak, tapi Password JANGAN
 	PasswordHash string `gorm:"type:varchar(255);not null" json:"-"`                 // [FIX] Hide PasswordHash
-	Role         Role   `gorm:"type:enum('admin','direktur','staf_program','staf_lembaga','manajer_kpp','manajer_pemas','manajer_pkl');not null;index" json:"role"`
+	Role         Role   `gorm:"type:enum('admin','direktur','pengurus','staf_program','staf_lembaga','manajer_kpp','manajer_pemas','manajer_pkl');not null;index" json:"role"`
 	Jabatan      string `gorm:"type:varchar(150)" json:"jabatan"`
 	Atribut      string `gorm:"type:text" json:"atribut"`
 }
@@ -55,7 +56,7 @@ func (u *User) IsAdmin() bool    { return u.Role == RoleAdmin }
 
 func (r Role) IsValid() bool {
 	switch r {
-	case RoleAdmin, RoleDirektur, RoleStafProgram, RoleStafLembaga, RoleManajerKPP, RoleManajerPemas, RoleManajerPKL:
+	case RoleAdmin, RoleDirektur, RolePengurus, RoleStafProgram, RoleStafLembaga, RoleManajerKPP, RoleManajerPemas, RoleManajerPKL:
 		return true
 	default:
 		return false

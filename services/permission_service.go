@@ -172,7 +172,7 @@ func (ps *PermissionService) CanUserViewLetter(user *models.User, letter *models
 	}
 
 	// 1. Admin & Direktur bisa lihat semua
-	if user.Role == models.RoleAdmin || user.Role == models.RoleDirektur {
+	if user.Role == models.RoleAdmin || user.Role == models.RoleDirektur || user.Role == models.RolePengurus {
 		return true, nil
 	}
 
@@ -196,9 +196,15 @@ func (ps *PermissionService) CanUserViewLetter(user *models.User, letter *models
 		return user.CanVerifyScope(letter.Scope), nil
 	}
 
-	// 6. Staf Program bisa lihat surat Eksternal (scope bidangnya)
-	if user.Role == models.RoleStafProgram && letter.Scope == models.ScopeEksternal {
-		return true, nil
+	// 6. Staf Program bisa lihat surat Eksternal (scope bidangnya) ATAU Surat Masuk (untuk dibalas)
+	if user.Role == models.RoleStafProgram {
+		if letter.Scope == models.ScopeEksternal {
+			return true, nil
+		}
+		// [FEATURE] Allow Staf Program to view ALL Incoming Letters so they can reply if disposed to them
+		if letter.IsSuratMasuk() {
+			return true, nil
+		}
 	}
 
 	return false, nil
