@@ -85,6 +85,14 @@ func (h *LetterCommonHandler) DeleteLetter(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "Dilarang menghapus surat ini"})
 	}
 
+	// [FIX] Update Status Log (Revert parent status if this was a reply)
+	if letter.InReplyToID != nil {
+		// Revert status surat induk menjadi 'sudah_disposisi' agar muncul kembali di list 'butuh balasan'
+		h.db.Model(&models.Letter{}).
+			Where("id = ?", *letter.InReplyToID).
+			Update("status", models.StatusSudahDisposisi)
+	}
+
 	h.db.Delete(&letter)
 	return c.JSON(fiber.Map{"success": true, "message": "Surat berhasil dihapus"})
 }

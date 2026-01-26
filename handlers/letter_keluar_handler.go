@@ -125,19 +125,28 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		}
 	}
 
-	// 6.5 Validasi Reply Linking (Opsional)
+	// 6.5 Validasi Reply Linking (Opsional) + STATUS UPDATE
 	// Jika user menyertakan InReplyToID, validasi bahwa surat induk ada dan perlu balasan
 	if req.InReplyToID != nil {
 		var parentLetter models.Letter
+		// Load parent letter with transactional lock if possible, or just standard load
 		if err := h.db.First(&parentLetter, *req.InReplyToID).Error; err != nil {
 			return utils.BadRequest(c, "Surat yang akan dibalas tidak ditemukan", nil)
 		}
 		if !parentLetter.IsSuratMasuk() {
 			return utils.BadRequest(c, "Hanya surat masuk yang dapat dibalas", nil)
 		}
+		// Cek apakah status sudah diarsipkan (artinya sudah dibalas)
+		// User report: unlimited reply bug. Fix: check status.
+		if parentLetter.Status == models.StatusDiarsipkan {
+			return utils.BadRequest(c, "Surat ini sudah dibalas / diarsipkan", nil)
+		}
 		if !parentLetter.NeedsReply {
 			return utils.BadRequest(c, "Surat masuk ini tidak ditandai perlu balasan", nil)
 		}
+
+		// [FIX] Update Status Surat Induk menjadi 'diarsipkan' agar tidak muncul lagi di list 'needs-reply'
+		// Kita lakukan update ini nanti di dalam transaction creation
 	}
 
 	// 7. Mapping ke Model
@@ -181,6 +190,16 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 		if err := tx.Create(&letter).Error; err != nil {
 			return err
 		}
+
+		// [FIX] Jika ini adalah balasan (InReplyToID != nil), update status surat induk
+		if letter.InReplyToID != nil {
+			if err := tx.Model(&models.Letter{}).
+				Where("id = ?", *letter.InReplyToID).
+				Update("status", models.StatusDiarsipkan).Error; err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 

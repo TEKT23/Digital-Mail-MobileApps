@@ -408,7 +408,8 @@ func (h *LetterMasukHandler) GetLettersNeedingReply(c *fiber.Ctx) error {
 	var letters []models.Letter
 
 	// Build query
-	query := h.db.Where("jenis_surat = ? AND needs_reply = ?", models.LetterMasuk, true)
+	// [FIX] Exclude letter that already archived (already replied)
+	query := h.db.Where("jenis_surat = ? AND needs_reply = ? AND status != ?", models.LetterMasuk, true, models.StatusDiarsipkan)
 
 	// Apply scope filter jika staf
 	if scopeFilter != "" {
