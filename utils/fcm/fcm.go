@@ -17,23 +17,29 @@ const FCMTopicPrefix = "topic_"
 
 var fcmClient *messaging.Client
 
-// Init Firebase
-func init() {
+// InitializeFCM initializes the Firebase Admin SDK
+// This must be called AFTER loading .env
+func InitializeFCM() {
 	log.Println("🔥 Initializing Firebase Admin SDK...")
 	ctx := context.Background()
 	config := &firebase.Config{ProjectID: "digimail-mobile"}
 
+	// Gunakan GOOGLE_APPLICATION_CREDENTIALS dari environment
+	// Pastikan variable ini sudah diset sebelum fungsi ini dipanggil
 	app, err := firebase.NewApp(ctx, config)
 	if err != nil {
-		log.Fatalf("❌ Error initializing Firebase app: %v\n", err)
+		log.Printf("❌ Error initializing Firebase app: %v\n", err)
+		return
 	}
 
 	client, err := app.Messaging(ctx)
 	if err != nil {
-		log.Fatalf("❌ Error getting Firebase Messaging client: %v\n", err)
+		log.Printf("❌ Error getting Firebase Messaging client: %v\n", err)
+		return
 	}
 
 	fcmClient = client
+	log.Println("✅ Firebase Admin SDK Initialized Successfully")
 }
 
 func mapRoleToTopic(role models.Role) string {

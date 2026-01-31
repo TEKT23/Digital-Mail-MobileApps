@@ -172,20 +172,15 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 
 	// 8. Simpan ke Database (Transactional with Auto-Increment Nomor Agenda)
 	err = h.db.Transaction(func(tx *gorm.DB) error {
-		// Auto-Generate Nomor Agenda untuk Surat Keluar
-		var lastSeq int
-		currentYear := time.Now().Year()
-
-		// Cari max nomor agenda tahun ini untuk surat keluar
-		if err := tx.Model(&models.Letter{}).
-			Where("jenis_surat = ? AND YEAR(created_at) = ?", models.LetterKeluar, currentYear).
-			Select("MAX(CAST(nomor_agenda AS UNSIGNED))").
-			Scan(&lastSeq).Error; err != nil {
-			return err
+		// Only generate nomor agenda if NOT draft mode
+		if !isDraftMode {
+			nomorAgenda, err := utils.GenerateNomorAgenda(tx, models.LetterKeluar)
+			if err != nil {
+				return err
+			}
+			letter.NomorAgenda = nomorAgenda
 		}
-
-		newSeq := lastSeq + 1
-		letter.NomorAgenda = fmt.Sprintf("%d", newSeq)
+		// Draft letters will have empty nomor_agenda
 
 		if err := tx.Create(&letter).Error; err != nil {
 			return err
@@ -330,9 +325,22 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 		}
 	}
 
-	// 8. Simpan Perubahan ke DB
-	if err := h.db.Save(letter).Error; err != nil {
-		return utils.InternalServerError(c, "Gagal menyimpan revisi surat")
+	// 8. Simpan Perubahan ke DB (with nomor_agenda generation if needed)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		// Generate nomor_agenda ONLY when transitioning draft→publish AND nomor_agenda is empty
+		if oldStatus == models.StatusDraft && letter.Status == models.StatusPerluVerifikasi && letter.NomorAgenda == "" {
+			nomorAgenda, err := utils.GenerateNomorAgenda(tx, models.LetterKeluar)
+			if err != nil {
+				return err
+			}
+			letter.NomorAgenda = nomorAgenda
+		}
+
+		return tx.Save(letter).Error
+	})
+
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal menyimpan revisi surat: "+err.Error())
 	}
 
 	// 9. Kirim Notifikasi (Hanya jika status berubah, misal: Revisi -> Perlu Verifikasi)

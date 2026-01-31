@@ -33,6 +33,7 @@ func main() {
 
 	config.ConnectDB()
 	storage.InitS3Client()
+	fcm.InitializeFCM() // [FIX] Init FCM after env loaded
 	app := fiber.New()
 
 	app.Use(requestid.New())

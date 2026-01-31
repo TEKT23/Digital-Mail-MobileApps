@@ -104,25 +104,18 @@ func (h *LetterMasukHandler) CreateSuratMasuk(c *fiber.Ctx) error {
 		letter.Status = models.StatusBelumDisposisi
 	}
 
-	// [FIX] Auto-Generate Nomor Agenda (Transactional)
+	// Auto-Generate Nomor Agenda (Transactional)
+	// Only generate for non-draft letters (published/submitted)
 	err = h.db.Transaction(func(tx *gorm.DB) error {
-		// Hanya generate nomor agenda jika belum ada (atau dioverwrite sistem)
-		// Kita akan memaksa generate agar konsisten
-		var lastSeq int
-		currentYear := time.Now().Year()
-
-		// Cari max nomor agenda tahun ini
-		// Asumsi: NomorAgenda disimpan sebagai string angka murni ("1", "2", dst)
-		// Jika formatnya kompleks (misal "001/AG/2023"), logic ini perlu disesuaikan dengan REGEX/Substring
-		if err := tx.Model(&models.Letter{}).
-			Where("jenis_surat = ? AND YEAR(created_at) = ?", models.LetterMasuk, currentYear).
-			Select("MAX(CAST(nomor_agenda AS UNSIGNED))").
-			Scan(&lastSeq).Error; err != nil {
-			return err
+		// Only generate nomor agenda if NOT draft mode
+		if !isDraftMode {
+			nomorAgenda, err := utils.GenerateNomorAgenda(tx, models.LetterMasuk)
+			if err != nil {
+				return err
+			}
+			letter.NomorAgenda = nomorAgenda
 		}
-
-		newSeq := lastSeq + 1
-		letter.NomorAgenda = fmt.Sprintf("%d", newSeq)
+		// Draft letters will have empty nomor_agenda
 
 		if err := tx.Create(&letter).Error; err != nil {
 			return err
@@ -212,7 +205,23 @@ func (h *LetterMasukHandler) UpdateSuratMasuk(c *fiber.Ctx) error {
 		letter.Status = models.StatusBelumDisposisi
 	}
 
-	h.db.Save(letter)
+	// Use transaction for save (with nomor_agenda generation if needed)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		// Generate nomor_agenda ONLY when transitioning draft→publish AND nomor_agenda is empty
+		if oldStatus == models.StatusDraft && letter.Status == models.StatusBelumDisposisi && letter.NomorAgenda == "" {
+			nomorAgenda, err := utils.GenerateNomorAgenda(tx, models.LetterMasuk)
+			if err != nil {
+				return err
+			}
+			letter.NomorAgenda = nomorAgenda
+		}
+
+		return tx.Save(letter).Error
+	})
+
+	if err != nil {
+		return utils.InternalServerError(c, "Gagal menyimpan surat: "+err.Error())
+	}
 
 	// Kirim notifikasi jika status berubah dari draft ke belum_disposisi
 	if oldStatus == models.StatusDraft && letter.Status == models.StatusBelumDisposisi {
