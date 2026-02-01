@@ -107,13 +107,16 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 
 	if !isDraftMode {
 		if strings.EqualFold(req.Scope, models.ScopeInternal) {
-			// === LOGIC OTOMATIS (Internal) ===
-			// Sistem mencari sendiri siapa Manajer PKL-nya
-			var manajerPKL models.User
-			if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err != nil {
-				return utils.InternalServerError(c, "Sistem Gagal: Manajer PKL belum terdaftar di sistem")
+			// === LOGIC BROADCAST (Internal) ===
+			// Untuk surat internal, TIDAK perlu assign ke manajer spesifik.
+			// Semua Manajer PKL akan bisa melihat dan memverifikasi surat ini.
+			// Cukup validasi bahwa ada minimal 1 Manajer PKL di sistem.
+			var count int64
+			h.db.Model(&models.User{}).Where("role = ?", models.RoleManajerPKL).Count(&count)
+			if count == 0 {
+				return utils.InternalServerError(c, "Sistem Gagal: Tidak ada Manajer PKL terdaftar di sistem")
 			}
-			verifierID = &manajerPKL.ID
+			// verifierID tetap nil - semua Manajer PKL akan melihat surat ini
 
 		} else {
 			// === LOGIC MANUAL (Eksternal) ===
@@ -292,18 +295,15 @@ func (h *LetterKeluarHandler) UpdateDraftLetter(c *fiber.Ctx) error {
 	statusChanged := false
 
 	if strings.EqualFold(scopeToCheck, models.ScopeInternal) {
-		// === LOGIC OTOMATIS (Internal) ===
-		// Cari Manajer PKL & Auto Assign
-		var manajerPKL models.User
-		if err := h.db.Where("role = ?", models.RoleManajerPKL).First(&manajerPKL).Error; err == nil {
-			letter.AssignedVerifierID = &manajerPKL.ID
+		// === LOGIC BROADCAST (Internal) ===
+		// Untuk surat internal, AssignedVerifierID dibiarkan nil.
+		// Semua Manajer PKL akan bisa melihat dan memverifikasi surat ini.
+		letter.AssignedVerifierID = nil
 
-			// Jika user menekan tombol "Simpan & Ajukan" (biasanya ditandai dengan perubahan status/intent)
-			// Di sini kita asumsikan setiap edit pada status 'Revisi' akan mengajukan ulang ke 'Perlu Verifikasi'
-			if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
-				letter.Status = models.StatusPerluVerifikasi
-				statusChanged = true
-			}
+		// Langsung ajukan ke status 'Perlu Verifikasi'
+		if letter.Status == models.StatusDraft || letter.Status == models.StatusPerluRevisi {
+			letter.Status = models.StatusPerluVerifikasi
+			statusChanged = true
 		}
 	} else {
 		// === LOGIC MANUAL (Eksternal) ===
@@ -560,13 +560,29 @@ func (h *LetterKeluarHandler) GetMyLetters(c *fiber.Ctx) error {
 	return utils.OK(c, "List surat keluar berhasil diambil", letters)
 }
 
-// GetLettersNeedVerification (FIXED)
+// GetLettersNeedVerification - Menampilkan surat yang perlu diverifikasi
+// Untuk Manajer PKL: Tampilkan SEMUA surat internal (scope=Internal) + surat yang di-assign langsung
+// Untuk Manajer lain: Tampilkan surat yang di-assign ke mereka
 func (h *LetterKeluarHandler) GetLettersNeedVerification(c *fiber.Ctx) error {
 	user, _ := middleware.GetUserFromContext(c)
 	var letters []models.Letter
 
-	h.db.Where("status = ? AND assigned_verifier_id = ?", models.StatusPerluVerifikasi, user.ID).
-		Preload("CreatedBy").
+	query := h.db.Where("status = ?", models.StatusPerluVerifikasi)
+
+	if user.Role == models.RoleManajerPKL {
+		// Manajer PKL melihat:
+		// 1. Semua surat INTERNAL (assigned_verifier_id IS NULL) - broadcast
+		// 2. Surat yang di-assign langsung ke mereka (jika ada)
+		query = query.Where(
+			"(scope = ? AND assigned_verifier_id IS NULL) OR assigned_verifier_id = ?",
+			models.ScopeInternal, user.ID,
+		)
+	} else {
+		// Manajer lain (KPP, Pemas) hanya melihat surat yang di-assign ke mereka
+		query = query.Where("assigned_verifier_id = ?", user.ID)
+	}
+
+	query.Preload("CreatedBy").
 		Order("created_at ASC").
 		Find(&letters)
 
