@@ -404,9 +404,7 @@ func (h *LetterMasukHandler) GetLettersNeedingReply(c *fiber.Ctx) error {
 	var scopeFilter string
 	switch user.Role {
 	case models.RoleStafProgram:
-		// [CHANGE] Staf Program should see ALL letters needing reply, not just External
-		// scopeFilter = models.ScopeEksternal
-		scopeFilter = ""
+		scopeFilter = models.ScopeEksternal
 	case models.RoleStafLembaga:
 		scopeFilter = models.ScopeInternal
 	default:

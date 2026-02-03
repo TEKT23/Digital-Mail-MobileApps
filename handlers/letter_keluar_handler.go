@@ -148,6 +148,14 @@ func (h *LetterKeluarHandler) CreateSuratKeluar(c *fiber.Ctx) error {
 			return utils.BadRequest(c, "Surat masuk ini tidak ditandai perlu balasan", nil)
 		}
 
+		// [FIX] Validasi Role vs Scope Surat Induk
+		if user.Role == models.RoleStafProgram && parentLetter.Scope != models.ScopeEksternal {
+			return utils.Forbidden(c, "Staf Program hanya boleh membalas surat eksternal")
+		}
+		if user.Role == models.RoleStafLembaga && parentLetter.Scope != models.ScopeInternal {
+			return utils.Forbidden(c, "Staf Lembaga hanya boleh membalas surat internal")
+		}
+
 		// [FIX] Update Status Surat Induk menjadi 'diarsipkan' agar tidak muncul lagi di list 'needs-reply'
 		// Kita lakukan update ini nanti di dalam transaction creation
 	}
