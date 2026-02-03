@@ -13,7 +13,7 @@ import (
 	"firebase.google.com/go/v4/messaging"
 )
 
-const FCMTopicPrefix = "topic_"
+const FCMTopicPrefix = "digitalmail_role_"
 
 var fcmClient *messaging.Client
 
@@ -50,13 +50,17 @@ func SendNotificationToTopic(ctx context.Context, topic, title, body string, dat
 	if fcmClient == nil {
 		return
 	}
+
+	// Add title and body to data payload so Android always receives them via onMessageReceived
+	data["title"] = title
+	data["body"] = body
+
+	// Use data-only message (no Notification payload) to ensure onMessageReceived is always called
 	msg := &messaging.Message{
-		Topic:        topic,
-		Notification: &messaging.Notification{Title: title, Body: body},
-		Data:         data,
+		Topic: topic,
+		Data:  data,
 		Android: &messaging.AndroidConfig{
-			Priority:     "high",
-			Notification: &messaging.AndroidNotification{ChannelID: "default_channel"},
+			Priority: "high",
 		},
 	}
 	response, err := fcmClient.Send(ctx, msg)
@@ -94,9 +98,13 @@ func handleEvent(event events.LetterEvent) {
 
 	switch event.Type {
 	case events.LetterCreated:
+		// 1. Surat Masuk Baru -> Direktur
 		if letter.IsSuratMasuk() {
-			notifyDirektur(ctx, letter, "Surat Masuk Baru", data)
+			title := fmt.Sprintf("Surat Masuk: %s", letter.Pengirim)
+			body := fmt.Sprintf("Perihal: %s", truncateString(letter.JudulSurat, 50))
+			notifyDirektur(ctx, title, body, data)
 		}
+
 		// Jika langsung verifikasi (Auto-Assign Manajer PKL)
 		if letter.Status == models.StatusPerluVerifikasi {
 			notifySpecificManajer(ctx, letter, data)
@@ -105,31 +113,62 @@ func handleEvent(event events.LetterEvent) {
 	case events.LetterStatusMoved:
 		switch letter.Status {
 		case models.StatusPerluVerifikasi:
+			// 2. Verifikasi -> Manajer
 			notifySpecificManajer(ctx, letter, data)
 
 		case models.StatusPerluPersetujuan:
-			notifyDirektur(ctx, letter, "Butuh Persetujuan", data)
+			// 3. Butuh Persetujuan -> Direktur
+			title := "Butuh Tanda Tangan"
+			body := fmt.Sprintf("Surat Keluar #%s menunggu persetujuan Anda.", letter.NomorSurat)
+			notifyDirektur(ctx, title, body, data)
 
 		case models.StatusPerluRevisi:
-			notifyStaf(ctx, letter, "Surat Perlu Revisi", "Mohon cek catatan revisi dari pimpinan.", data)
+			// 4. Perlu Revisi -> Staf/Pembuat
+			// Infer role penolak berdasarkan previous status
+			rolePenolak := "Pimpinan" // Default
+			if event.OldStatus == models.StatusPerluVerifikasi {
+				rolePenolak = "Manajer"
+			} else if event.OldStatus == models.StatusPerluPersetujuan {
+				rolePenolak = "Direktur"
+			}
+
+			title := "Revisi Diperlukan"
+			body := fmt.Sprintf("Surat #%s dikembalikan oleh %s. Cek catatan revisi.", letter.NomorSurat, rolePenolak)
+			notifyStaf(ctx, letter, title, body, data)
 
 		case models.StatusDiarsipkan:
-			// 1. Beritahu Pembuat (Staf Program / Staf Lembaga) bahwa surat sudah Final
-			notifyStaf(ctx, letter, "Surat Disetujui (Final)", "Surat Anda telah disetujui Direktur dan diarsipkan.", data)
+			// 6. Surat Final/Arsip -> Staf
+			title := "Surat Selesai & Diarsipkan"
+			body := fmt.Sprintf("Surat #%s telah selesai diproses dan diarsipkan.", letter.NomorSurat)
+
+			// 1. Beritahu Pembuat (Staf Program / Staf Lembaga)
+			notifyStaf(ctx, letter, title, body, data)
 
 			// 2. Beritahu Bagian Arsip (Staf Lembaga) - Jika pembuatnya bukan Staf Lembaga
 			// Logic notifyArchivist bisa kita panggil agar Staf Lembaga (Admin Arsip) tau ada surat baru masuk arsip
 			notifyArchivist(ctx, letter, data)
 
 		case models.StatusSudahDisposisi:
-			notifyStaf(ctx, letter, "Disposisi Turun", "Direktur telah memberikan disposisi.", data)
+			// 5. Disposisi Turun -> Staf
+			title := "Disposisi Baru"
+			body := fmt.Sprintf("Direktur telah mendisposisikan surat dari %s. Segera tindak lanjuti.", letter.Pengirim)
+			notifyStaf(ctx, letter, title, body, data)
 		}
 	}
 }
 
+// truncateString memotong string jika lebih panjang dari limit
+func truncateString(str string, limit int) string {
+	if len(str) <= limit {
+		return str
+	}
+	return str[:limit] + "..."
+}
+
 func notifySpecificManajer(ctx context.Context, l models.Letter, data map[string]string) {
-	title := "Verifikasi Surat Baru"
-	body := fmt.Sprintf("Surat #%s menunggu verifikasi Anda.", l.NomorSurat)
+	// 2. Verifikasi (Target: Manajer)
+	title := "Verifikasi Surat Keluar"
+	body := fmt.Sprintf("Surat #%s perihal '%s' menunggu verifikasi Anda.", l.NomorSurat, truncateString(l.JudulSurat, 30))
 
 	// 1. Cek Data Object Manajer (Hasil Preload)
 	if l.AssignedVerifier != nil {
@@ -149,16 +188,13 @@ func notifySpecificManajer(ctx context.Context, l models.Letter, data map[string
 }
 
 func notifyArchivist(ctx context.Context, l models.Letter, data map[string]string) {
-	title := "Arsip Surat Keluar"
-	body := fmt.Sprintf("Surat #%s telah final. Silakan diarsipkan.", l.NomorSurat)
+	// 6. Surat Final/Arsip (Target: Archivist/Staf Lembaga)
+	title := "Surat Selesai & Diarsipkan"
+	body := fmt.Sprintf("Surat #%s telah selesai diproses dan diarsipkan.", l.NomorSurat)
 	SendNotificationToTopic(ctx, mapRoleToTopic(models.RoleStafLembaga), title, body, data)
 }
 
-func notifyDirektur(ctx context.Context, l models.Letter, title string, data map[string]string) {
-	body := fmt.Sprintf("Surat dari %s menunggu disposisi.", l.Pengirim)
-	if l.IsSuratKeluar() {
-		body = fmt.Sprintf("Surat Keluar #%s menunggu tanda tangan.", l.NomorSurat)
-	}
+func notifyDirektur(ctx context.Context, title, body string, data map[string]string) {
 	SendNotificationToTopic(ctx, mapRoleToTopic(models.RoleDirektur), title, body, data)
 }
 
