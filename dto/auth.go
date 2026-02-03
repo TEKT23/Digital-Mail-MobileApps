@@ -58,11 +58,11 @@ type RefreshTokenResponse struct {
 }
 
 type PasswordResetRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	Email string `json:"email" form:"email" binding:"required,email"`
 }
 
 type PasswordResetSubmission struct {
-	Token           string `json:"token" binding:"required"`
-	Password        string `json:"password" binding:"required,min=8"`
-	ConfirmPassword string `json:"confirm_password" binding:"required,eqfield=Password"`
+	Token           string `json:"token" form:"token" binding:"required"`
+	Password        string `json:"password" form:"password" binding:"required,min=8"`
+	ConfirmPassword string `json:"confirm_password" form:"confirm_password" binding:"required,eqfield=Password"`
 }

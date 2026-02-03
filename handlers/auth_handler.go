@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/mail"
 	"net/url"
 	"os"
@@ -287,6 +288,7 @@ func RequestPasswordReset(c *fiber.Ctx) error {
 	}
 
 	resetLink := buildResetLink(rawToken)
+	fmt.Printf("\n[DEBUG] PASSWORD RESET LINK: %s\n\n", resetLink)
 	emailCfg := config.LoadEmailConfig()
 	mailClient := mailer.NewClient(emailCfg)
 	if err := mailClient.SendPasswordResetEmail(user.Email, resetLink); err != nil {
@@ -448,4 +450,43 @@ func buildResetLink(token string) string {
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+func ShowResetPasswordForm(c *fiber.Ctx) error {
+	token := c.Query("token")
+	if token == "" {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
+
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reset Password</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%%; max-width: 400px; }
+        h2 { text-align: center; color: #1a73e8; }
+        input { width: 100%%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%%; padding: 10px; background-color: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #1557b0; }
+        .message { text-align: center; color: red; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Reset Kata Sandi</h2>
+        <form action="/api/auth/reset-password" method="POST">
+            <input type="hidden" name="token" value="%s">
+            <input type="password" name="password" placeholder="Kata Sandi Baru" required minlength="8">
+            <input type="password" name="confirm_password" placeholder="Konfirmasi Kata Sandi" required minlength="8">
+            <button type="submit">Reset Kata Sandi</button>
+        </form>
+    </div>
+</body>
+</html>
+`, token)
+
+	c.Set("Content-Type", "text/html")
+	return c.SendString(html)
 }
